@@ -6,6 +6,7 @@ import type { GitRepository } from './git/repository';
 import type { RepoManager } from './repoManager';
 import { SCHEME, compareFileVersions, compareWithWorkingTree, openCommitFileDiff, openFileAtRevision, openStashFileDiff, stashFileRef } from './diff';
 import type { FileHistoryPanels } from './views/fileHistoryPanel';
+import { Activity } from './activity';
 import type { HistoryPanel, HistoryTarget } from './views/historyPanel';
 import type { RefsModel, TreeNode } from './views/refsModel';
 import type { CommitFile, RefTreeContext, RefType } from './shared/protocol';
@@ -61,6 +62,25 @@ function asCommit(arg: Arg): string | undefined {
   return (arg as WebviewContext).hash;
 }
 
+/** Key of the item a command acts on, used to show a spinner on it while the command's git work runs. */
+function targetKey(arg: unknown): string | undefined {
+  if (!arg || typeof arg !== 'object') return undefined;
+  const a = arg as Partial<WebviewContext> & { kind?: string; ref?: GitRef; stash?: { hash: string }; worktree?: { path: string }; submodule?: { path: string } };
+  switch (a.kind) {
+    case 'ref':
+      return `ref:${a.ref!.fullName}`;
+    case 'stash':
+      return `stash:${a.stash!.hash}`;
+    case 'worktree':
+      return `worktree:${a.worktree!.path}`;
+    case 'submodule':
+      return `submodule:${a.submodule!.path}`;
+  }
+  if (a.refFull) return `ref:${a.refFull}`;
+  if (a.hash && a.webviewSection === 'commit') return `commit:${a.hash}`;
+  return undefined;
+}
+
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -75,6 +95,7 @@ export class Commands {
     private readonly refs: RefsModel,
     private readonly history: HistoryPanel,
     private readonly fileHistory: FileHistoryPanels,
+    private readonly activity: Activity,
     private readonly output: vscode.LogOutputChannel,
   ) {}
 
@@ -91,7 +112,7 @@ export class Commands {
             }
             arg = node;
           }
-          await fn.call(this, arg as Arg, ...rest);
+          await Activity.within(`gitRepository.${id}`, targetKey(arg), () => fn.call(this, arg as Arg, ...rest));
         } catch (e) {
           await this.showError(e);
         }
@@ -177,17 +198,19 @@ export class Commands {
     return repo;
   }
 
-  /** Runs a mutating git operation with progress, then refreshes all views. */
+  /** Runs a mutating git operation with progress (shown in the windows too), then refreshes all views. */
   private async run<T>(title: string, task: (repo: GitRepository) => Promise<T>, notification = false): Promise<T> {
     const repo = this.repo();
-    try {
-      return await vscode.window.withProgress(
-        { location: notification ? vscode.ProgressLocation.Notification : vscode.ProgressLocation.Window, title },
-        () => task(repo),
-      );
-    } finally {
-      await this.manager.refresh(repo);
-    }
+    return this.activity.track(title, async () => {
+      try {
+        return await vscode.window.withProgress(
+          { location: notification ? vscode.ProgressLocation.Notification : vscode.ProgressLocation.Window, title },
+          () => task(repo),
+        );
+      } finally {
+        await this.manager.refresh(repo);
+      }
+    });
   }
 
   private async showError(e: unknown): Promise<void> {

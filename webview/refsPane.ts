@@ -8,6 +8,8 @@ export interface RefsPaneOptions {
   /** Persisted expand state, keyed by node id. */
   expanded: Record<string, boolean>;
   save(): void;
+  /** A ref's history was requested; the window switches to it before the host answers. */
+  onShowRef?(refFull: string): void;
 }
 
 interface Row {
@@ -30,6 +32,7 @@ export class RefsPane {
   private rows: Row[] = [];
   private selectedId?: string;
   private activeRef?: string;
+  private busy = new Set<string>();
   private filter = '';
 
   constructor(private readonly o: RefsPaneOptions) {
@@ -125,6 +128,27 @@ export class RefsPane {
     this.render();
   }
 
+  /** Shows a spinner on the items git operations are running on (see `ActivityTask.target`). */
+  setBusy(targets: Set<string>): void {
+    this.busy = targets;
+    this.render();
+  }
+
+  private isBusy(node: RefTreeNode): boolean {
+    if (this.busy.size === 0) return false;
+    const c = node.context;
+    const key = node.refFull
+      ? `ref:${node.refFull}`
+      : c.stashHash && c.filePath === undefined
+        ? `stash:${c.stashHash}`
+        : c.worktreePath
+          ? `worktree:${c.worktreePath}`
+          : c.submodulePath
+            ? `submodule:${c.submodulePath}`
+            : undefined;
+    return !!key && this.busy.has(key);
+  }
+
   focusFilter(select = true): void {
     this.filterInput.focus();
     if (select) this.filterInput.select();
@@ -211,6 +235,8 @@ export class RefsPane {
         if (node.emphasis) classes.push('emphasis');
         if (node.context.treeItem === 'info') classes.push('info');
         if (depth === 0) classes.push('group');
+        const busy = this.isBusy(node);
+        if (busy) classes.push('busy');
         const twistie = expandable ? icon(expanded ? 'chevron-down' : 'chevron-right', 'twistie') : '<span class="twistie"></span>';
         const actions = (node.actions ?? [])
           .map(a => `<button class="action" data-command="${esc(a.command)}" title="${esc(a.title)}" tabindex="-1">${icon(a.icon)}</button>`)
@@ -218,7 +244,7 @@ export class RefsPane {
         return `<div class="${classes.join(' ')}" role="treeitem" data-id="${esc(node.id)}" style="padding-left:${4 + depth * 12}px"
           ${expandable ? `aria-expanded="${expanded}"` : ''} aria-level="${depth + 1}" aria-selected="${node.id === this.selectedId}"
           title="${esc(node.tooltip ?? node.label)}" data-vscode-context="${ctx(node.context)}">
-          ${twistie}${node.icon ? icon(node.icon, 'ticon') : ''}<span class="tlabel">${this.highlight(node.label)}</span>${
+          ${twistie}${busy ? icon('loading', 'ticon codicon-modifier-spin') : node.icon ? icon(node.icon, 'ticon') : ''}<span class="tlabel">${this.highlight(node.label)}</span>${
             node.description ? `<span class="tdesc">${esc(node.description)}</span>` : ''
           }${actions ? `<span class="tactions">${actions}</span>` : ''}</div>`;
       })
@@ -241,6 +267,7 @@ export class RefsPane {
 
   private run(command: string, node: RefTreeNode): void {
     if (node.context.treeItem === 'info') return;
+    if (command === 'gitRepository.showHistory' && node.refFull) this.o.onShowRef?.(node.refFull);
     this.o.post({ type: 'command', command, args: [node.context] });
   }
 

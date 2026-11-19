@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { Activity } from '../activity';
 import { openCommitFileDiff } from '../diff';
 import type { GitRepository } from '../git/repository';
 import type { RepoManager } from '../repoManager';
@@ -16,8 +17,12 @@ export class FileHistoryPanels implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     manager: RepoManager,
+    private readonly activity: Activity,
   ) {
     this.disposables.push(
+      activity.onDidChange(() => {
+        for (const p of this.panels.values()) p.post({ type: 'activity', tasks: activity.tasks });
+      }),
       manager.onDidChangeRepository(repo => {
         for (const p of this.panels.values()) if (p.repo.root === repo.root) void p.reload(true);
       }),
@@ -34,7 +39,7 @@ export class FileHistoryPanels implements vscode.Disposable {
     if (panel) {
       panel.reveal();
     } else {
-      panel = new FileHistoryPanel(this.context.extensionUri, repo, file, () => this.panels.delete(key));
+      panel = new FileHistoryPanel(this.context.extensionUri, repo, file, this.activity, () => this.panels.delete(key));
       this.panels.set(key, panel);
     }
     return panel;
@@ -64,6 +69,7 @@ export class FileHistoryPanel implements vscode.Disposable {
     extensionUri: vscode.Uri,
     readonly repo: GitRepository,
     readonly file: string,
+    private readonly activity: Activity,
     onDispose: () => void,
   ) {
     const title = `History - ${path.posix.basename(file)}`;
@@ -87,7 +93,7 @@ export class FileHistoryPanel implements vscode.Disposable {
     this.panel.reveal(undefined, false);
   }
 
-  private post(message: ToWebview): void {
+  post(message: ToWebview): void {
     void this.panel.webview.postMessage(message);
   }
 
@@ -95,6 +101,7 @@ export class FileHistoryPanel implements vscode.Disposable {
     switch (message.type) {
       case 'ready':
         this.readyCount++;
+        this.post({ type: 'activity', tasks: this.activity.tasks });
         await this.reload();
         break;
       case 'refresh':

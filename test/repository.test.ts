@@ -62,7 +62,8 @@ beforeAll(() => {
   git(work, 'worktree', 'add', '-q', path.join(tmp, 'wt-feature'), 'feature/login');
 
   repo = new GitRepository(work);
-});
+  // Creating the fixture spawns ~30 git processes, which can exceed the 10s default on slow machines.
+}, 60_000);
 
 afterAll(() => {
   fs.rmSync(tmp, { recursive: true, force: true });

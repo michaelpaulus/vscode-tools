@@ -543,3 +543,19 @@ button.action:disabled { opacity: 0.4; cursor: default; background: transparent;
 .infobar .file-hint { margin-left: auto; color: var(--vscode-descriptionForeground); font-style: italic; }
 .file.tracked .file-name { font-weight: 600; }
 .file.tracked { box-shadow: inset 2px 0 var(--vscode-focusBorder); }
+
+/* Git operations in progress: the window stays usable and shows what is running. */
+.toolbar .activity {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 40%;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+.toolbar .activity-text { overflow: hidden; text-overflow: ellipsis; }
+.toolbar .activity:not(.hidden) + .search { margin-left: 8px; }
+button.action.busy .codicon { animation: codicon-spin 1.5s steps(30) infinite; }
+.tnode.busy .tlabel { opacity: 0.8; }

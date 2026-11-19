@@ -9,9 +9,9 @@ A Visual Studio–style **Git Repository** window for VS Code: one editor tab wi
 Open it with `Git Repository: Open Git Repository`, `Ctrl+0 Ctrl+R`, or the button in the Source Control title bar.
 
 **Branches pane** (left side of the window; resize with the splitter, hide with the toolbar toggle)
-- Local branches grouped into folders by `/`, the current branch on top in bold, ahead/behind counts, and branches checked out in other worktrees
+- Local branches grouped into folders by `/`, base branches (current in bold, then `main`, then the rest) listed before folders, ahead/behind counts, and branches checked out in other worktrees
 - Remotes with their branches, tags (newest first), stashes, linked worktrees, submodules
-- Click a ref to show its history (the displayed ref is highlighted); double-click a branch to check it out; hover for quick actions; right-click for every operation
+- Click a ref to show its history right away (it loads in the background; the displayed ref is highlighted); double-click a branch to check it out; hover for quick actions; right-click for every operation
 - Expand a stash to see its files (untracked files included); click one to diff it in VS Code's built-in diff editor
 - Filter box (or just start typing in the tree) narrows every group and highlights matches; `Filter Branches` focuses it from the Command Palette
 - Keyboard: arrows to move / expand / collapse, Enter to open, Space to toggle
@@ -25,6 +25,7 @@ Open it with `Git Repository: Open Git Repository`, `Ctrl+0 Ctrl+R`, or the butt
 - Commit details pane: author/committer, parents (click to navigate), full message, changed files; click a file to diff it against the parent
 - Banner with *Continue / Abort* while a merge, rebase, cherry-pick or revert is in progress
 - Keyboard: arrows / Page Up / Page Down / Home / End, `Ctrl+C` copies the selected commit ID
+- Never blocks: running git operations show in the toolbar and as spinners on the branch, commit or button they apply to
 
 **File history** (like Visual Studio's *View History* on a file)
 - Right-click a file in the Explorer, an editor tab, the editor, Source Control changes or a commit's changed files and choose **View History** (or run `Git: View History`); each file gets its own *History - name* tab

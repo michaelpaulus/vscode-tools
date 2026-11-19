@@ -2,6 +2,15 @@
 
 export type RefType = 'branch' | 'remote' | 'tag' | 'head';
 
+export interface ActivityTask {
+  id: number;
+  title: string;
+  /** Command that started the work, e.g. `gitRepository.fetch`. */
+  command?: string;
+  /** Item it acts on: `ref:<fullName>`, `commit:<hash>`, `stash:<hash>`, `worktree:<path>` or `submodule:<path>`. */
+  target?: string;
+}
+
 export interface RefBadge {
   type: RefType;
   /** Short name, e.g. `main`, `origin/main`, `v1.0`. */
@@ -142,6 +151,10 @@ export type ToWebview =
   | { type: 'more'; commits: CommitRow[]; hasMore: boolean }
   | { type: 'details'; details: CommitDetails | undefined; hash: string }
   | { type: 'loading'; value: boolean }
+  /** Git operations in progress (see `Activity`). */
+  | { type: 'activity'; tasks: ActivityTask[] }
+  /** The displayed ref is changing; clear the old history and show the new ref while it loads. */
+  | { type: 'switching'; label?: string; refType?: RefType | 'commit'; refFull?: string }
   | { type: 'error'; message: string }
   | { type: 'select'; hash: string };
 

@@ -115,8 +115,8 @@ const tests: [string, () => Promise<void>][] = [
     assert.equal(branches[0].label, 'main');
     assert.equal(branches[0].emphasis, true);
     assert.equal(branches[0].context.treeItem, 'ref:branch:current:upstream');
-    assert.equal(branches[1].label, 'feature');
-    assert.equal(branches[1].children![0].label, 'one');
+    assert.deepEqual(branches.map(b => b.label), ['main', 'staging', 'test', 'feature']);
+    assert.equal(branches[3].children![0].label, 'one');
     assert.equal(groups[1].children![0].label, 'origin');
     assert.equal(groups[2].children![0].label, 'v1.0');
     assert.equal(groups[3].children![0].label, 'No stashes');

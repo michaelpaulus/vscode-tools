@@ -36,6 +36,8 @@ async function main(): Promise<void> {
   commit(work, 'c.txt', 'three\n', 'Feature commit');
   git(work, 'push', '-q', '-u', 'origin', 'feature/one');
   git(work, 'checkout', '-q', 'main');
+  git(work, 'branch', 'test');
+  git(work, 'branch', 'staging');
   git(work, 'tag', 'v1.0');
 
   const root = path.resolve(__dirname, '..');

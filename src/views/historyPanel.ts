@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { Activity } from '../activity';
 import type { GitRepository } from '../git/repository';
 import type { RepoManager } from '../repoManager';
 import type {
@@ -36,6 +37,8 @@ export class HistoryPanel implements vscode.Disposable {
   private hasMore = false;
   private revs: string[] = [];
   private loadToken = 0;
+  /** The displayed ref changed: the webview clears the old history right away instead of showing it until the new one loads. */
+  private switching = false;
   private selected?: string;
   private pendingSelect?: string;
   private readonly disposables: vscode.Disposable[] = [];
@@ -45,6 +48,7 @@ export class HistoryPanel implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly manager: RepoManager,
     private readonly refs: RefsModel,
+    private readonly activity: Activity,
   ) {
     this.options = { ...DEFAULT_OPTIONS, ...context.workspaceState.get<Partial<HistoryOptions>>(OPTIONS_KEY) };
     this.disposables.push(
@@ -54,6 +58,7 @@ export class HistoryPanel implements vscode.Disposable {
         void this.reload();
       }),
       refs.onDidChange(() => this.postTree()),
+      activity.onDidChange(() => this.post({ type: 'activity', tasks: activity.tasks })),
       manager.onDidChangeRepository(repo => {
         if (repo === manager.current) void this.reload(true);
       }),
@@ -89,6 +94,7 @@ export class HistoryPanel implements vscode.Disposable {
   /** Opens or reveals the panel. `target` undefined keeps the displayed ref; `reload` false skips reloading an open panel. */
   show(target?: HistoryTarget | null, reload = true): void {
     if (target !== undefined) {
+      this.switching = this.target?.fullName !== target?.fullName || !!this.filter;
       this.target = target ?? undefined;
       this.targetRepo = this.manager.current?.root;
       this.filter = '';
@@ -129,6 +135,7 @@ export class HistoryPanel implements vscode.Disposable {
     switch (message.type) {
       case 'ready':
         this.readyCount++;
+        this.post({ type: 'activity', tasks: this.activity.tasks });
         void this.refs.ensure().then(() => this.postTree());
         await this.reload();
         break;
@@ -210,13 +217,21 @@ export class HistoryPanel implements vscode.Disposable {
     if (this.targetRepo && this.targetRepo !== repo.root) {
       this.target = undefined;
     }
+    if (this.switching && !preserve) {
+      const current = this.refs.snapshot?.root === repo.root ? this.refs.snapshot.refs.find(r => r.isCurrent) : undefined;
+      const ref = this.target ?? current;
+      this.post({ type: 'switching', label: ref?.name, refType: ref?.type, refFull: ref?.fullName });
+    }
+    this.switching = false;
     this.post({ type: 'loading', value: true });
     try {
-      const result = await this.query(repo);
+      const data = await this.query(repo, state => {
+        // The header is cheap to compute; show it before the (slower) history arrives.
+        if (token === this.loadToken) this.post({ type: 'state', state });
+      });
       if (token !== this.loadToken) return;
       this.panel.title = `Git Repository - ${repo.name}`;
-      this.post({ type: 'state', state: result.state });
-      this.post({ type: 'history', data: result.data, preserveSelection: preserve });
+      this.post({ type: 'history', data, preserveSelection: preserve });
       if (this.pendingSelect) {
         this.post({ type: 'select', hash: this.pendingSelect });
         this.pendingSelect = undefined;
@@ -228,10 +243,15 @@ export class HistoryPanel implements vscode.Disposable {
     }
   }
 
-  private async query(repo: GitRepository): Promise<{ state: HistoryState; data: HistoryData }> {
-    const [head, operation, remotes] = await Promise.all([repo.getHead(), repo.getOperation(), repo.getRemotes()]);
+  private async query(repo: GitRepository, onState: (state: HistoryState) => void): Promise<HistoryData> {
+    const [head, operation, remotes, targetExists] = await Promise.all([
+      repo.getHead(),
+      repo.getOperation(),
+      repo.getRemotes(),
+      this.target ? repo.tryRevParse(this.target.fullName) : Promise.resolve(undefined),
+    ]);
 
-    if (this.target && !(await repo.tryRevParse(this.target.fullName))) this.target = undefined;
+    if (this.target && !targetExists) this.target = undefined;
     const target = this.target;
 
     const rev = target?.fullName ?? 'HEAD';
@@ -247,8 +267,26 @@ export class HistoryPanel implements vscode.Disposable {
       refType = head.branch ? 'branch' : 'commit';
       upstream = head.upstream;
     }
-    const counts = upstream ? await repo.aheadBehind(rev, upstream) : { ahead: 0, behind: 0 };
-    const state: HistoryState = {
+    const all = this.options.mode === 'all';
+    // Visual Studio style: in "current" mode, "Incoming" lists upstream commits and "Local History" the ref itself.
+    this.revs = all
+      ? ['HEAD', '--branches', ...(this.options.showRemotes ? ['--remotes'] : []), ...(this.options.showTags ? ['--tags'] : [])]
+      : [rev];
+    const searchRevs = all ? this.revs : [rev, ...(upstream ? [upstream] : [])];
+    const pageSize = this.pageSize();
+    const firstParent = this.options.firstParent;
+
+    // Run the git queries concurrently instead of one after another.
+    const countsP = upstream ? repo.aheadBehind(rev, upstream) : Promise.resolve({ ahead: 0, behind: 0 });
+    const outgoingP = upstream ? repo.revList(`${upstream}..${rev}`) : Promise.resolve([]);
+    const incomingHashesP = upstream ? repo.revList(`${rev}..${upstream}`) : Promise.resolve([]);
+    const incomingP = !all && !this.filter && upstream ? repo.log({ revs: [`${rev}..${upstream}`], maxCount: 1000, firstParent }) : Promise.resolve(all || this.filter ? undefined : []);
+    const commitsP = this.filter ? repo.search(searchRevs, this.filter, 1000, firstParent) : repo.log({ revs: this.revs, maxCount: pageSize + 1, firstParent });
+    // Once one query fails the rest are no longer awaited; keep their failures from surfacing as unhandled rejections.
+    for (const p of [countsP, outgoingP, incomingHashesP, incomingP, commitsP]) (p as Promise<unknown>).catch(() => undefined);
+
+    const counts = await countsP;
+    onState({
       repoName: repo.name,
       repoRoot: repo.root,
       refLabel,
@@ -264,48 +302,25 @@ export class HistoryPanel implements vscode.Disposable {
       options: this.options,
       filter: this.filter,
       dateFormat: vscode.workspace.getConfiguration('gitRepository').get('dateFormat', 'locale'),
-    };
+    });
 
-    const all = this.options.mode === 'all';
-    this.revs = all
-      ? ['HEAD', '--branches', ...(this.options.showRemotes ? ['--remotes'] : []), ...(this.options.showTags ? ['--tags'] : [])]
-      : [rev, ...(upstream ? [upstream] : [])];
-
-    const outgoingP = upstream ? repo.revList(`${upstream}..${rev}`) : Promise.resolve([]);
-    const incomingHashesP = upstream ? repo.revList(`${rev}..${upstream}`) : Promise.resolve([]);
-
+    const [commits, incoming, outgoing, incomingHashes] = await Promise.all([commitsP, incomingP, outgoingP, incomingHashesP]);
     if (this.filter) {
-      const commits = await repo.search(this.revs, this.filter, 1000, this.options.firstParent);
+      this.revs = searchRevs;
       this.loaded = commits.length;
       this.hasMore = false;
-      return {
-        state,
-        data: { commits: this.filterBadges(commits), hasMore: false, outgoing: await outgoingP, incomingHashes: await incomingHashesP, isSearch: true },
-      };
+      return { commits: this.filterBadges(commits), hasMore: false, outgoing, incomingHashes, isSearch: true };
     }
-
-    const pageSize = this.pageSize();
-    let incoming: CommitRow[] | undefined;
-    if (!all) {
-      // Visual Studio style: "Incoming" lists upstream commits, "Local History" lists the ref itself.
-      this.revs = [rev];
-      incoming = upstream ? await repo.log({ revs: [`${rev}..${upstream}`], maxCount: 1000, firstParent: this.options.firstParent }) : [];
-    }
-    const commits = await repo.log({ revs: this.revs, maxCount: pageSize + 1, firstParent: this.options.firstParent });
     this.hasMore = commits.length > pageSize;
     if (this.hasMore) commits.pop();
     this.loaded = commits.length;
-
     return {
-      state,
-      data: {
-        incoming: incoming && this.filterBadges(incoming),
-        commits: this.filterBadges(commits),
-        hasMore: this.hasMore,
-        outgoing: await outgoingP,
-        incomingHashes: await incomingHashesP,
-        isSearch: false,
-      },
+      incoming: incoming && this.filterBadges(incoming),
+      commits: this.filterBadges(commits),
+      hasMore: this.hasMore,
+      outgoing,
+      incomingHashes,
+      isSearch: false,
     };
   }
 

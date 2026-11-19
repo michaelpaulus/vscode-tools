@@ -225,8 +225,8 @@ export class RefsModel implements vscode.Disposable {
         context: { webviewSection: 'tree', treeItem: 'folder' },
         children: this.refNodes(data, group, folderPrefix, remote),
       }));
-    const current = top ? leafNodes.filter(n => n.emphasis) : [];
-    return [...current, ...folderNodes, ...leafNodes.filter(n => !current.includes(n))];
+    // Base branches (main, test, staging, ...) before folders (feature/, fix/, ...).
+    return [...leafNodes, ...folderNodes];
   }
 
   private refNode(root: string, ref: GitRef, worktreePath: string | undefined): RefTreeNode {

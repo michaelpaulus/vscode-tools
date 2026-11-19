@@ -1,5 +1,6 @@
 import { computeGraph, type GraphRow } from '../src/shared/graph';
 import type {
+  ActivityTask,
   CommitDetails,
   CommitFile,
   CommitRow,
@@ -8,6 +9,7 @@ import type {
   HistoryOptions,
   HistoryState,
   RefBadge,
+  RefType,
   ToWebview,
 } from '../src/shared/protocol';
 import { RefsPane } from './refsPane';
@@ -140,6 +142,7 @@ app.innerHTML = `
     <button class="action toggle" data-ui="tree" title="Show Branches">${icon('layout-sidebar-left')}</button>
     <button class="action toggle" data-ui="details" title="Show Commit Details">${icon('layout-panel')}</button>
   </div>
+  <span class="activity hidden" role="status" aria-live="polite">${icon('loading', 'codicon-modifier-spin')}<span class="activity-text"></span></span>
   <div class="search main-only">
     <input type="text" placeholder="Filter History" aria-label="Filter history by message, author or commit ID" spellcheck="false">
     <button class="action clear-search hidden" title="Clear">${icon('close')}</button>
@@ -194,7 +197,7 @@ const searchInput = $<HTMLInputElement>('.search input');
 const clearSearch = $('.clear-search');
 const vsash = $('.vsash');
 
-const refsPane = new RefsPane({ post, esc, ctx, icon, expanded: ui.treeExpanded, save: () => saveUi() });
+const refsPane = new RefsPane({ post, esc, ctx, icon, expanded: ui.treeExpanded, save: () => saveUi(), onShowRef: refFull => beginSwitch(refFull) });
 $('.workspace').insertBefore(refsPane.element, vsash);
 
 // ------------------------------------------------------------------ toolbar
@@ -470,7 +473,9 @@ function renderItem(item: Item, index: number): string {
   const c = item.commit;
   const isOut = outgoing.has(c.hash);
   const isIn = item.section === 'incoming' || incomingSet.has(c.hash);
-  const marker = isOut
+  const marker = busyTargets.has(`commit:${c.hash}`)
+    ? `<span class="marker" title="Working...">${icon('loading', 'codicon-modifier-spin')}</span>`
+    : isOut
     ? `<span class="marker" title="Outgoing (not yet pushed)">${icon('arrow-up')}</span>`
     : isIn
       ? `<span class="marker" title="Incoming (not yet pulled)">${icon('arrow-down')}</span>`
@@ -557,7 +562,79 @@ function renderError() {
   el.innerHTML = errorText ? `${icon('error')} <span>${esc(errorText)}</span>` : '';
 }
 
+// ------------------------------------------------------------------ activity
+
+/** Git operations running in the extension host; the window stays usable and shows them. */
+let tasks: ActivityTask[] = [];
+let historyLoading = false;
+let busyTargets = new Set<string>();
+
+function updateBusy() {
+  app.classList.toggle('loading', historyLoading || tasks.length > 0);
+  const el = $('.activity');
+  el.classList.toggle('hidden', tasks.length === 0);
+  if (tasks.length) {
+    $('.activity-text').textContent = tasks[0].title + (tasks.length > 1 ? ` (+${tasks.length - 1} more)` : '');
+    el.title = tasks.map(t => t.title).join('\n');
+  }
+  const commands = new Set(tasks.map(t => t.command));
+  for (const b of app.querySelectorAll<HTMLElement>('.toolbar [data-command], .details-actions [data-command]')) {
+    b.classList.toggle('busy', commands.has(b.dataset.command));
+  }
+}
+
+function setTasks(next: ActivityTask[]) {
+  tasks = next;
+  const targets = new Set(next.flatMap(t => (t.target ? [t.target] : [])));
+  const changed = targets.size !== busyTargets.size || [...targets].some(t => !busyTargets.has(t));
+  busyTargets = targets;
+  updateBusy();
+  if (changed) {
+    refsPane.setBusy(targets);
+    renderRows();
+  }
+}
+
+/** Label of the ref being switched to while its history loads. */
+let switchingTo: string | undefined;
+
+const REF_PREFIXES: [string, RefType | 'commit'][] = [['refs/heads/', 'branch'], ['refs/remotes/', 'remote'], ['refs/tags/', 'tag']];
+
+/** Switches to a ref immediately: shows its name, clears the previous history and shows that the new one is loading. */
+function beginSwitch(refFull: string | undefined, label?: string, refType?: RefType | 'commit') {
+  if (fileMode) return;
+  if (refFull && !label) {
+    const p = REF_PREFIXES.find(([prefix]) => refFull.startsWith(prefix));
+    label = p ? refFull.slice(p[0].length) : refFull;
+    refType = p?.[1];
+  }
+  if (refFull && refFull === state?.refFull && !switchingTo && !state.filter) return;
+  switchingTo = label ?? '';
+  if (refFull) refsPane.setActiveRef(refFull);
+  if (state && label) {
+    state = { ...state, refLabel: label, refType: refType ?? state.refType, refFull, upstream: undefined, ahead: 0, behind: 0, filter: '' };
+    renderState();
+  }
+  data = undefined;
+  selected = undefined;
+  details = undefined;
+  detailsLoading = false;
+  selection = [];
+  buildItems();
+  viewport.scrollTop = 0;
+  historyLoading = true;
+  updateBusy();
+  applyLayout();
+  renderDetails();
+  renderEmpty();
+}
+
 function renderEmpty() {
+  if (switchingTo !== undefined) {
+    emptyEl.classList.remove('hidden');
+    emptyEl.textContent = switchingTo ? `Loading history for ${switchingTo}…` : 'Loading history…';
+    return;
+  }
   const hasCommits = items.some(i => i.kind === 'commit');
   const sectionsCollapsed = items.length > 0;
   emptyEl.classList.toggle('hidden', hasCommits || (sectionsCollapsed && !data?.isSearch && (data?.commits.length ?? 0) > 0));
@@ -694,6 +771,7 @@ rowsEl.addEventListener('dblclick', e => {
   if (badge?.dataset.ref) {
     const ref = JSON.parse(badge.dataset.ref) as RefBadge;
     if (ref.type !== 'head') {
+      beginSwitch(ref.fullName);
       post({ type: 'command', command: 'gitRepository.showHistory', args: [{ webviewSection: 'ref', refType: ref.type, refName: ref.name, refFull: ref.fullName, isCurrentRef: !!ref.isCurrent }] });
     }
   }
@@ -845,7 +923,11 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
       renderError();
       renderState();
       break;
+    case 'switching':
+      beginSwitch(m.refFull, m.label, m.refType);
+      break;
     case 'history': {
+      switchingTo = undefined;
       data = m.data;
       loadingMore = false;
       buildItems();
@@ -888,9 +970,17 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
       select(m.hash, true);
       break;
     case 'loading':
-      app.classList.toggle('loading', m.value);
+      historyLoading = m.value;
+      updateBusy();
+      break;
+    case 'activity':
+      setTasks(m.tasks);
       break;
     case 'error':
+      if (switchingTo !== undefined) {
+        switchingTo = undefined;
+        renderEmpty();
+      }
       errorText = m.message;
       renderError();
       break;
