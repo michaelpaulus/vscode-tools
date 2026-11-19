@@ -533,3 +533,13 @@ button.action.checked {
 .status-D .file-name { text-decoration: line-through; }
 .status-R .file-status { color: var(--vscode-gitDecoration-renamedResourceForeground); }
 .status-U .file-status { color: var(--vscode-gitDecoration-conflictingResourceForeground); }
+
+/* File history ("View History" on a file) */
+body:not(.file-mode) .file-only, body.file-mode .main-only { display: none !important; }
+button.action:disabled { opacity: 0.4; cursor: default; background: transparent; outline: none; }
+.file-title { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; max-width: 320px; }
+.file-title-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.infobar .file-path { overflow: hidden; text-overflow: ellipsis; }
+.infobar .file-hint { margin-left: auto; color: var(--vscode-descriptionForeground); font-style: italic; }
+.file.tracked .file-name { font-weight: 600; }
+.file.tracked { box-shadow: inset 2px 0 var(--vscode-focusBorder); }

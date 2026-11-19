@@ -72,13 +72,31 @@ export async function openFileAtRevision(repo: GitRepository, hash: string, relP
   await vscode.window.showTextDocument(doc, { preview: true });
 }
 
-export async function compareWithWorkingTree(repo: GitRepository, hash: string, relPath: string): Promise<void> {
-  const name = path.basename(relPath);
+export async function compareWithWorkingTree(repo: GitRepository, hash: string, relPath: string, workingPath = relPath): Promise<void> {
   await vscode.commands.executeCommand(
     'vscode.diff',
     toRevisionUri(repo.root, relPath, hash),
-    vscode.Uri.file(path.join(repo.root, relPath)),
-    `${name} (${short(hash)}) ↔ ${name} (Working Tree)`,
+    vscode.Uri.file(path.join(repo.root, workingPath)),
+    `${path.basename(relPath)} (${short(hash)}) ↔ ${path.basename(workingPath)} (Working Tree)`,
+    { preview: true },
+  );
+}
+
+export interface FileVersion {
+  hash: string;
+  /** Path of the file in that commit. */
+  path: string;
+}
+
+/** Diffs two committed versions of a file; each side is read at its own path so renames compare correctly. */
+export async function compareFileVersions(repo: GitRepository, older: FileVersion, newer: FileVersion): Promise<void> {
+  const left = `${path.basename(older.path)} (${short(older.hash)})`;
+  const right = older.path === newer.path ? `(${short(newer.hash)})` : `${path.basename(newer.path)} (${short(newer.hash)})`;
+  await vscode.commands.executeCommand(
+    'vscode.diff',
+    toRevisionUri(repo.root, older.path, older.hash),
+    toRevisionUri(repo.root, newer.path, newer.hash),
+    `${left} ↔ ${right}`,
     { preview: true },
   );
 }

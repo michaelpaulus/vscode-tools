@@ -20,6 +20,10 @@ export interface CommitRow {
   date: string;
   subject: string;
   refs: RefBadge[];
+  /** File history only: the file's path, change status and pre-rename path in this commit. */
+  filePath?: string;
+  fileStatus?: string;
+  fileOldPath?: string;
 }
 
 export interface CommitFile {
@@ -65,6 +69,8 @@ export interface HistoryState {
   options: HistoryOptions;
   filter: string;
   dateFormat: 'locale' | 'iso' | 'relative';
+  /** Set in a file history window: the file's current path relative to `repoRoot`. */
+  file?: string;
 }
 
 export interface HistoryData {
@@ -141,6 +147,7 @@ export type ToWebview =
 
 export type FromWebview =
   | { type: 'ready' }
+  | { type: 'refresh' }
   | { type: 'treeChildren'; id: string; stashHash: string }
   | { type: 'selectCommit'; hash: string }
   | { type: 'loadMore' }

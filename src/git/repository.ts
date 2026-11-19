@@ -3,12 +3,14 @@ import * as path from 'node:path';
 import { GitCli, GitError } from './cli';
 import {
   DETAILS_FORMAT,
+  FILE_LOG_FORMAT,
   GitRef,
   LOG_FORMAT,
   REF_FORMAT,
   Submodule,
   Worktree,
   parseCommitDetails,
+  parseFileLog,
   parseGitmodules,
   parseLog,
   parseNameStatus,
@@ -158,6 +160,25 @@ export class GitRepository {
     } catch (e) {
       // Empty repositories have no HEAD yet.
       if (e instanceof GitError && /does not have any commits|unknown revision|bad default revision/.test(e.message)) {
+        return [];
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Commits that changed `relPath`, newest first, following renames. There is no `skip`: git only
+   * follows a rename while printing, so skipped commits would lose it. Page by raising `maxCount`.
+   */
+  async fileLog(relPath: string, maxCount?: number): Promise<CommitRow[]> {
+    const file = relPath.replace(/\\/g, '/');
+    const args = ['log', '--follow', `--format=${FILE_LOG_FORMAT}`, '--decorate=full', '--name-status', '-z'];
+    if (maxCount !== undefined) args.push(`--max-count=${maxCount}`);
+    args.push('HEAD', '--', file);
+    try {
+      return parseFileLog(await this.exec(args), file);
+    } catch (e) {
+      if (e instanceof GitError && /does not have any commits|unknown revision|bad default revision|ambiguous argument 'HEAD'/.test(e.message)) {
         return [];
       }
       throw e;

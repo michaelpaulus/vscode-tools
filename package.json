@@ -444,6 +444,30 @@
         "title": "Deinitialize",
         "category": "Git Repository",
         "icon": "$(close)"
+      },
+      {
+        "command": "gitRepository.viewFileHistory",
+        "title": "View History",
+        "category": "Git",
+        "icon": "$(history)"
+      },
+      {
+        "command": "gitRepository.compareFileVersions",
+        "title": "Compare Selected",
+        "category": "Git Repository",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "gitRepository.compareFileWithPrevious",
+        "title": "Compare with Previous",
+        "category": "Git Repository",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "gitRepository.showCommitDetails",
+        "title": "View Commit Details",
+        "category": "Git Repository",
+        "icon": "$(git-commit)"
       }
     ],
     "menus": {
@@ -627,6 +651,22 @@
         {
           "command": "gitRepository.clearStashes",
           "when": "gitRepository.hasStashes"
+        },
+        {
+          "command": "gitRepository.compareFileVersions",
+          "when": "false"
+        },
+        {
+          "command": "gitRepository.compareFileWithPrevious",
+          "when": "false"
+        },
+        {
+          "command": "gitRepository.showCommitDetails",
+          "when": "false"
+        },
+        {
+          "command": "gitRepository.viewFileHistory",
+          "when": "resourceScheme == file"
         }
       ],
       "webview/context": [
@@ -752,27 +792,27 @@
         },
         {
           "command": "gitRepository.openFileDiff",
-          "when": "webviewId == 'gitRepository.history' && webviewSection == 'file'",
+          "when": "(webviewId == 'gitRepository.history' || webviewId == 'gitRepository.fileHistory') && webviewSection == 'file'",
           "group": "1_open@1"
         },
         {
           "command": "gitRepository.compareWithWorkingTree",
-          "when": "webviewId == 'gitRepository.history' && webviewSection == 'file' && fileStatus != 'D'",
+          "when": "(webviewId == 'gitRepository.history' || webviewId == 'gitRepository.fileHistory') && webviewSection == 'file' && fileStatus != 'D'",
           "group": "1_open@2"
         },
         {
           "command": "gitRepository.openFileAtRevision",
-          "when": "webviewId == 'gitRepository.history' && webviewSection == 'file' && fileStatus != 'D'",
+          "when": "(webviewId == 'gitRepository.history' || webviewId == 'gitRepository.fileHistory') && webviewSection == 'file' && fileStatus != 'D'",
           "group": "1_open@3"
         },
         {
           "command": "gitRepository.openWorkingFile",
-          "when": "webviewId == 'gitRepository.history' && webviewSection == 'file'",
+          "when": "(webviewId == 'gitRepository.history' || webviewId == 'gitRepository.fileHistory') && webviewSection == 'file'",
           "group": "1_open@4"
         },
         {
           "command": "gitRepository.copyFilePath",
-          "when": "webviewId == 'gitRepository.history' && webviewSection == 'file'",
+          "when": "(webviewId == 'gitRepository.history' || webviewId == 'gitRepository.fileHistory') && webviewSection == 'file'",
           "group": "9_copy@1"
         },
         {
@@ -994,6 +1034,41 @@
           "command": "gitRepository.fetchPrune",
           "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^(group:remotes|remote)$/",
           "group": "1_fetch@2"
+        },
+        {
+          "command": "gitRepository.viewFileHistory",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'file' && fileStatus != 'D'",
+          "group": "1_open@5"
+        },
+        {
+          "command": "gitRepository.compareFileVersions",
+          "when": "webviewId == 'gitRepository.fileHistory' && webviewSection == 'fileCommit' && compareSelection",
+          "group": "1_compare@1"
+        },
+        {
+          "command": "gitRepository.compareFileWithPrevious",
+          "when": "webviewId == 'gitRepository.fileHistory' && webviewSection == 'fileCommit' && !multiSelected",
+          "group": "1_compare@2"
+        },
+        {
+          "command": "gitRepository.compareWithWorkingTree",
+          "when": "webviewId == 'gitRepository.fileHistory' && webviewSection == 'fileCommit' && !multiSelected && fileStatus != 'D'",
+          "group": "1_compare@3"
+        },
+        {
+          "command": "gitRepository.openFileAtRevision",
+          "when": "webviewId == 'gitRepository.fileHistory' && webviewSection == 'fileCommit' && !multiSelected && fileStatus != 'D'",
+          "group": "2_open@1"
+        },
+        {
+          "command": "gitRepository.showCommitDetails",
+          "when": "webviewId == 'gitRepository.fileHistory' && webviewSection == 'fileCommit' && !multiSelected",
+          "group": "2_open@2"
+        },
+        {
+          "command": "gitRepository.copySha",
+          "when": "webviewId == 'gitRepository.fileHistory' && webviewSection == 'fileCommit' && !multiSelected",
+          "group": "9_copy@1"
         }
       ],
       "scm/title": [
@@ -1001,6 +1076,34 @@
           "command": "gitRepository.open",
           "group": "navigation@100",
           "when": "scmProvider == git"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gitRepository.viewFileHistory",
+          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "group": "7_gitRepository@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "gitRepository.viewFileHistory",
+          "when": "resourceScheme == file",
+          "group": "7_gitRepository@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "gitRepository.viewFileHistory",
+          "when": "resourceScheme == file",
+          "group": "7_gitRepository@1"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "gitRepository.viewFileHistory",
+          "when": "scmProvider == git",
+          "group": "7_gitRepository@1"
         }
       ]
     },

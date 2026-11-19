@@ -300,6 +300,34 @@ const tests: [string, () => Promise<void>][] = [
     assert.equal(readText('a.txt'), 'stash side\n');
     assert.equal(git('stash', 'list'), '');
   }],
+
+  ['views a file history across a rename and compares two selected versions', async () => {
+    commit('history.txt', 'version 1\n', 'History v1');
+    git('mv', 'history.txt', 'history-renamed.txt');
+    git('commit', '-q', '-m', 'History rename');
+    commit('history-renamed.txt', 'version 2\n', 'History v2');
+    const root = api.manager.current!.root;
+    await exec('viewFileHistory', vscode.Uri.file(path.join(root, 'history-renamed.txt')));
+    const panel = await waitFor(() => api.fileHistory.find(root, 'history-renamed.txt'), 'file history panel');
+    await waitFor(() => (panel.readyCount > 0 && panel.commits.length === 3) || undefined, 'file history rows');
+    assert.deepEqual(
+      panel.commits.map(c => [c.subject, c.filePath]),
+      [['History v2', 'history-renamed.txt'], ['History rename', 'history-renamed.txt'], ['History v1', 'history.txt']],
+    );
+
+    const [newest, , oldest] = panel.commits;
+    await exec('compareFileVersions', {
+      webviewSection: 'fileCommit',
+      repoRoot: root,
+      selection: [newest, oldest].map(c => ({ hash: c.hash, filePath: c.filePath })),
+    });
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    assert.ok(tab?.input instanceof vscode.TabInputTextDiff, 'expected a diff editor');
+    const input = tab.input as vscode.TabInputTextDiff;
+    assert.equal((await vscode.workspace.openTextDocument(input.original)).getText(), 'version 1\n');
+    assert.equal((await vscode.workspace.openTextDocument(input.modified)).getText(), 'version 2\n');
+    assert.match(tab.label, /history\.txt.*history-renamed\.txt/);
+  }],
 ];
 
 export async function run(): Promise<void> {

@@ -4,7 +4,8 @@ import { GitError } from './git/cli';
 import type { GitRef, Stash } from './git/parsers';
 import type { GitRepository } from './git/repository';
 import type { RepoManager } from './repoManager';
-import { compareWithWorkingTree, openCommitFileDiff, openFileAtRevision, openStashFileDiff, stashFileRef } from './diff';
+import { SCHEME, compareFileVersions, compareWithWorkingTree, openCommitFileDiff, openFileAtRevision, openStashFileDiff, stashFileRef } from './diff';
+import type { FileHistoryPanels } from './views/fileHistoryPanel';
 import type { HistoryPanel, HistoryTarget } from './views/historyPanel';
 import type { RefsModel, TreeNode } from './views/refsModel';
 import type { CommitFile, RefTreeContext, RefType } from './shared/protocol';
@@ -21,7 +22,7 @@ interface RefArg {
 
 /** Shape of `data-vscode-context` objects set by the history webview. */
 interface WebviewContext {
-  webviewSection?: 'commit' | 'ref' | 'file';
+  webviewSection?: 'commit' | 'ref' | 'file' | 'fileCommit';
   hash?: string;
   parentHash?: string;
   isHead?: boolean;
@@ -34,6 +35,10 @@ interface WebviewContext {
   filePath?: string;
   fileOldPath?: string;
   fileStatus?: string;
+  /** File history rows: the repository, the file's current path, and the selected versions (list order, newest first). */
+  repoRoot?: string;
+  workingPath?: string;
+  selection?: { hash: string; filePath: string }[];
 }
 
 type Arg = TreeNode | WebviewContext | undefined;
@@ -69,6 +74,7 @@ export class Commands {
     private readonly manager: RepoManager,
     private readonly refs: RefsModel,
     private readonly history: HistoryPanel,
+    private readonly fileHistory: FileHistoryPanels,
     private readonly output: vscode.LogOutputChannel,
   ) {}
 
@@ -130,6 +136,10 @@ export class Commands {
       c('compareWithWorkingTree', a => this.fileCommand(a, 'working')),
       c('openWorkingFile', a => this.fileCommand(a, 'open')),
       c('copyFilePath', a => this.fileCommand(a, 'copy')),
+      c('viewFileHistory', a => this.viewFileHistory(a)),
+      c('compareFileVersions', a => this.compareFileVersions(a)),
+      c('compareFileWithPrevious', a => this.fileCommand(a, 'diff')),
+      c('showCommitDetails', a => this.showCommitDetails(a)),
       c('abortOperation', () => this.abortOperation()),
       c('continueOperation', () => this.continueOperation()),
       c('stashAll', () => this.stashPush('all')),
@@ -692,7 +702,7 @@ export class Commands {
   private async fileCommand(arg: Arg, action: 'diff' | 'revision' | 'working' | 'open' | 'copy'): Promise<void> {
     const ctx = arg as WebviewContext | undefined;
     if (!ctx?.filePath || !ctx.hash) return;
-    const repo = this.repo();
+    const repo = this.repoOf(ctx);
     const file: CommitFile = { status: ctx.fileStatus ?? 'M', path: ctx.filePath, oldPath: ctx.fileOldPath || undefined };
     switch (action) {
       case 'diff':
@@ -700,14 +710,74 @@ export class Commands {
       case 'revision':
         return openFileAtRevision(repo, ctx.hash, file.path);
       case 'working':
-        return compareWithWorkingTree(repo, ctx.hash, file.path);
+        return compareWithWorkingTree(repo, ctx.hash, file.path, ctx.workingPath || file.path);
       case 'open':
-        await vscode.window.showTextDocument(vscode.Uri.file(path.join(repo.root, file.path)));
+        await vscode.window.showTextDocument(vscode.Uri.file(path.join(repo.root, ctx.workingPath || file.path)));
         return;
       case 'copy':
         await vscode.env.clipboard.writeText(file.path);
         return;
     }
+  }
+
+  /** The repository a file-history context belongs to, which need not be the current one. */
+  private repoOf(ctx: WebviewContext | undefined): GitRepository {
+    const root = ctx?.repoRoot;
+    return (root && this.manager.list().find(r => r.root === root)) || this.repo();
+  }
+
+  /** Resolves a file from an Explorer/editor/SCM URI, a history webview file row, or the active editor. */
+  private fileTarget(arg: unknown): { repo: GitRepository; relPath: string } | undefined {
+    let fsPath: string | undefined;
+    if (arg instanceof vscode.Uri) {
+      // Revision URIs keep the working-tree path, so history can be opened from a diff editor too.
+      if (arg.scheme !== 'file' && arg.scheme !== SCHEME) return undefined;
+      fsPath = arg.fsPath;
+    } else if (arg && typeof arg === 'object' && 'resourceUri' in arg && (arg as vscode.SourceControlResourceState).resourceUri instanceof vscode.Uri) {
+      fsPath = (arg as vscode.SourceControlResourceState).resourceUri.fsPath;
+    } else if (arg && typeof arg === 'object' && 'filePath' in arg && (arg as WebviewContext).filePath) {
+      const ctx = arg as WebviewContext;
+      return { repo: this.repoOf(ctx), relPath: ctx.workingPath || ctx.filePath! };
+    } else {
+      const uri = vscode.window.activeTextEditor?.document.uri;
+      if (uri) return this.fileTarget(uri);
+    }
+    if (!fsPath) return undefined;
+    const norm = (p: string) => path.resolve(p).toLowerCase();
+    const target = norm(fsPath);
+    const repo = this.manager
+      .list()
+      .filter(r => target.startsWith(norm(r.root) + path.sep))
+      .sort((a, b) => b.root.length - a.root.length)[0];
+    if (!repo) throw new Error(`${path.basename(fsPath)} is not in a Git repository that is open in this workspace.`);
+    return { repo, relPath: path.relative(repo.root, path.resolve(fsPath)).replace(/\\/g, '/') };
+  }
+
+  private async viewFileHistory(arg: unknown): Promise<void> {
+    const target = this.fileTarget(arg);
+    if (!target) {
+      void vscode.window.showInformationMessage('Select a file to view its history.');
+      return;
+    }
+    this.fileHistory.show(target.repo, target.relPath);
+  }
+
+  private async compareFileVersions(arg: Arg): Promise<void> {
+    const ctx = arg as WebviewContext | undefined;
+    const sel = ctx?.selection ?? [];
+    if (sel.length !== 2) {
+      void vscode.window.showInformationMessage('Select two versions of the file to compare.');
+      return;
+    }
+    // Rows are listed newest first.
+    await compareFileVersions(this.repoOf(ctx), { hash: sel[1].hash, path: sel[1].filePath }, { hash: sel[0].hash, path: sel[0].filePath });
+  }
+
+  private async showCommitDetails(arg: Arg): Promise<void> {
+    const ctx = arg as WebviewContext | undefined;
+    if (!ctx?.hash) return;
+    if (ctx.repoRoot && this.manager.current?.root !== ctx.repoRoot) this.manager.setCurrent(ctx.repoRoot);
+    this.history.showCommit(ctx.hash);
   }
 
   // ---------------------------------------------------------------- operations in progress

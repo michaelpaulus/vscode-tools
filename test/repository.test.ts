@@ -134,6 +134,19 @@ describe('GitRepository', () => {
     expect(root.files).toEqual([{ status: 'A', path: 'a.txt' }]);
   });
 
+  it('logs a file history across renames with the path at each commit', async () => {
+    const rows = await repo.fileLog('renamed.txt');
+    expect(rows.map(r => [r.subject, r.fileStatus, r.filePath, r.fileOldPath])).toEqual([
+      ['Rename b', 'R', 'renamed.txt', 'b.txt'],
+      ['Second commit', 'A', 'b.txt', undefined],
+    ]);
+
+    const a = await repo.fileLog('a.txt');
+    expect(a.map(r => r.subject)).toEqual(['Main work', 'First commit']);
+    expect((await repo.fileLog('a.txt', 1)).map(r => r.subject)).toEqual(['Main work']);
+    expect(await repo.fileLog('missing.txt')).toEqual([]);
+  });
+
   it('shows file content at a revision', async () => {
     expect((await repo.show('HEAD~3', 'a.txt')).toString()).toBe('one\nchanged\n');
     expect((await repo.show('HEAD', 'missing.txt')).length).toBe(0);

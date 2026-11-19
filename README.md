@@ -26,6 +26,14 @@ Open it with `Git Repository: Open Git Repository`, `Ctrl+0 Ctrl+R`, or the butt
 - Banner with *Continue / Abort* while a merge, rebase, cherry-pick or revert is in progress
 - Keyboard: arrows / Page Up / Page Down / Home / End, `Ctrl+C` copies the selected commit ID
 
+**File history** (like Visual Studio's *View History* on a file)
+- Right-click a file in the Explorer, an editor tab, the editor, Source Control changes or a commit's changed files and choose **View History** (or run `Git: View History`); each file gets its own *History - name* tab
+- Follows the file across renames; the details pane highlights the file in each commit
+- Ctrl+click (or Shift+click) two versions and choose **Compare Selected** to diff them, oldest on the left
+- Double-click a version to compare it with the previous one; right-click for compare with working tree, open this version, view the commit in the Git Repository window, or copy its ID
+
+![File history: two versions selected for comparison](media/file-history.png)
+
 **Operations**
 | Area | Commands |
 | --- | --- |
@@ -33,7 +41,7 @@ Open it with `Git Repository: Open Git Repository`, `Ctrl+0 Ctrl+R`, or the butt
 | Remote branches | Checkout as tracking branch, new branch, merge, rebase, delete |
 | Tags | Checkout (detached), new branch, create (lightweight or annotated), push, delete locally or on a remote |
 | Commits | Checkout (detached), new branch, new tag, cherry-pick, revert, reset (soft / mixed / hard), amend message or staged changes (HEAD only), copy ID / message |
-| Files | Compare with previous, compare with working tree, open file at revision, open working file, copy path |
+| Files | View history, compare two selected versions, compare with previous, compare with working tree, open file at revision, open working file, copy path |
 | Stashes | Stash all (with untracked), stash all but keep staged, stash staged only (each with an optional message), apply, pop (the stash is kept if it conflicts), delete, delete all, new branch from stash; for stash files: compare with working tree, open working file |
 | Remote | Fetch (optionally prune), pull, push, sync |
 | Worktrees | New worktree from a branch / remote branch / tag or a new branch, open (new or current window), lock / unlock, remove (with force), prune |

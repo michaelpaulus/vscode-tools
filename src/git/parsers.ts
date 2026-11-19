@@ -116,6 +116,33 @@ export function parseLog(output: string): CommitRow[] {
   return commits;
 }
 
+/** `git log --follow --name-status -z --format` producing records consumed by {@link parseFileLog}. */
+export const FILE_LOG_FORMAT = '%x1f' + LOG_FORMAT;
+
+/**
+ * Parses a single-file `git log --follow --name-status -z` written with {@link FILE_LOG_FORMAT}.
+ * `file` is the path in the newest commit listed; each row records the file's path in that commit
+ * so versions on either side of a rename can be read back.
+ */
+export function parseFileLog(output: string, file: string): CommitRow[] {
+  const rows: CommitRow[] = [];
+  let current = file;
+  for (const record of output.split('\x1f')) {
+    const end = record.indexOf(RECORD);
+    if (end < 0) continue;
+    const [row] = parseLog(record.slice(0, end + 1));
+    if (!row) continue;
+    // Merges list no changes for the file, so they keep the path of the newer commit.
+    const entry = parseNameStatus(record.slice(end + 1).replace(/^[\0\n]+/, ''))[0];
+    row.filePath = entry?.path ?? current;
+    row.fileStatus = entry?.status ?? 'M';
+    if (entry?.oldPath) row.fileOldPath = entry.oldPath;
+    current = entry?.oldPath ?? row.filePath;
+    rows.push(row);
+  }
+  return rows;
+}
+
 export const DETAILS_FORMAT = ['%H', '%P', '%an', '%ae', '%aI', '%cn', '%ce', '%cI', '%s', '%D', '%B'].join('%x00');
 
 export function parseCommitDetails(output: string, files: CommitFile[]): CommitDetails {

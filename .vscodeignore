@@ -13,3 +13,4 @@ dist-test/**
 .gitignore
 .github/**
 media/screenshot.png
+media/file-history.png

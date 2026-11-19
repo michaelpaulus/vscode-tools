@@ -4,6 +4,9 @@ All notable changes to this extension are documented here. The format follows [K
 
 ## [Unreleased]
 
+### Added
+- File history: **View History** on a file (Explorer, editor, editor tab, Source Control, or a commit's changed files) opens a *History - file* tab that follows renames. Ctrl+click two versions to compare them, or compare a version with the previous one or the working tree.
+
 ### Changed
 - The branches tree now lives inside the Git Repository window as a resizable left pane, like Visual Studio, instead of a separate activity-bar view. It has its own filter box with match highlighting, hover actions, and the same context menus. Double-click a branch to check it out.
 

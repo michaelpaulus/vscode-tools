@@ -1,4 +1,3 @@
-import * as crypto from 'node:crypto';
 import * as vscode from 'vscode';
 import type { GitRepository } from '../git/repository';
 import type { RepoManager } from '../repoManager';
@@ -14,6 +13,7 @@ import type {
 } from '../shared/protocol';
 import { openCommitFileDiff } from '../diff';
 import type { RefsModel } from './refsModel';
+import { webviewHtml, webviewOptions } from './webviewHtml';
 
 export interface HistoryTarget {
   type: Exclude<RefType, 'head'> | 'commit';
@@ -37,6 +37,7 @@ export class HistoryPanel implements vscode.Disposable {
   private revs: string[] = [];
   private loadToken = 0;
   private selected?: string;
+  private pendingSelect?: string;
   private readonly disposables: vscode.Disposable[] = [];
   private panelDisposables: vscode.Disposable[] = [];
 
@@ -79,6 +80,12 @@ export class HistoryPanel implements vscode.Disposable {
     return this.selected;
   }
 
+  /** Opens the panel and selects `hash` once the history has loaded. */
+  showCommit(hash: string): void {
+    this.pendingSelect = hash;
+    this.show(undefined, true);
+  }
+
   /** Opens or reveals the panel. `target` undefined keeps the displayed ref; `reload` false skips reloading an open panel. */
   show(target?: HistoryTarget | null, reload = true): void {
     if (target !== undefined) {
@@ -91,11 +98,7 @@ export class HistoryPanel implements vscode.Disposable {
       if (reload) void this.reload();
       return;
     }
-    const panel = vscode.window.createWebviewPanel(HistoryPanel.viewType, 'Git Repository', vscode.ViewColumn.Active, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist'), vscode.Uri.joinPath(this.context.extensionUri, 'media')],
-    });
+    const panel = vscode.window.createWebviewPanel(HistoryPanel.viewType, 'Git Repository', vscode.ViewColumn.Active, webviewOptions(this.context.extensionUri));
     this.adopt(panel);
     if (vscode.workspace.getConfiguration('gitRepository').get<boolean>('fetchOnOpen')) {
       void vscode.commands.executeCommand('gitRepository.fetch');
@@ -106,11 +109,8 @@ export class HistoryPanel implements vscode.Disposable {
     this.panel?.dispose();
     this.panel = panel;
     panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'git-repository.svg');
-    panel.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist'), vscode.Uri.joinPath(this.context.extensionUri, 'media')],
-    };
-    panel.webview.html = this.html(panel.webview);
+    panel.webview.options = webviewOptions(this.context.extensionUri);
+    panel.webview.html = webviewHtml(this.context.extensionUri, panel.webview, 'repository', 'Git Repository');
     this.panelDisposables = [
       panel.webview.onDidReceiveMessage((m: FromWebview) => void this.onMessage(m)),
       panel.onDidDispose(() => {
@@ -217,6 +217,10 @@ export class HistoryPanel implements vscode.Disposable {
       this.panel.title = `Git Repository - ${repo.name}`;
       this.post({ type: 'state', state: result.state });
       this.post({ type: 'history', data: result.data, preserveSelection: preserve });
+      if (this.pendingSelect) {
+        this.post({ type: 'select', hash: this.pendingSelect });
+        this.pendingSelect = undefined;
+      }
     } catch (e) {
       if (token === this.loadToken) this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -316,26 +320,6 @@ export class HistoryPanel implements vscode.Disposable {
     if (this.hasMore) commits.pop();
     this.loaded += commits.length;
     this.post({ type: 'more', commits: this.filterBadges(commits), hasMore: this.hasMore });
-  }
-
-  private html(webview: vscode.Webview): string {
-    const nonce = crypto.randomBytes(16).toString('base64');
-    const dist = (f: string) => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', f));
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="${dist('codicons/codicon.css')}">
-<link rel="stylesheet" href="${dist('webview.css')}">
-<title>Git Repository</title>
-</head>
-<body data-vscode-context='{"preventDefaultContextMenuItems": true}'>
-<div id="app"></div>
-<script nonce="${nonce}" src="${dist('webview.js')}"></script>
-</body>
-</html>`;
   }
 
   dispose(): void {

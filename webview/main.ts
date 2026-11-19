@@ -25,7 +25,10 @@ const ROW = 22;
 const LANE = 12;
 const MAX_GRAPH = 320;
 
-type SectionId = 'incoming' | 'local' | 'all' | 'search';
+type SectionId = 'incoming' | 'local' | 'all' | 'search' | 'file';
+
+/** A single file's history ("View History" on a file) rather than the Git Repository window. */
+const fileMode = document.body.dataset.mode === 'file';
 
 type Item =
   | { kind: 'section'; id: SectionId; label: string; actions: { label: string; command: string; title: string }[] }
@@ -60,7 +63,11 @@ let incomingGraph: GraphRow[] = [];
 let localGraph: GraphRow[] = [];
 let outgoing = new Set<string>();
 let incomingSet = new Set<string>();
+/** Commit whose details are shown. */
 let selected: string | undefined;
+/** File mode only: all selected commits (Ctrl/Shift+click), and the anchor for range selection. */
+let selection: string[] = [];
+let anchor: string | undefined;
 let details: CommitDetails | undefined;
 let detailsLoading = false;
 let loadingMore = false;
@@ -100,10 +107,22 @@ function formatDate(iso: string): string {
 const app = document.getElementById('app')!;
 app.innerHTML = `
 <div class="toolbar" role="toolbar">
-  <button class="repo-button" data-command="gitRepository.switchRepository" title="Switch Repository">
+  <span class="file-title file-only">${icon('history')}<span class="file-title-name"></span></span>
+  <button class="repo-button main-only" data-command="gitRepository.switchRepository" title="Switch Repository">
     ${icon('repo')}<span class="repo-name">Git Repository</span>${icon('chevron-down')}
   </button>
-  <div class="actions">
+  <div class="actions file-only">
+    <button class="action" data-local="refresh" title="Refresh">${icon('refresh')}</button>
+    <span class="separator"></span>
+    <button class="action" data-file-command="gitRepository.compareFileVersions" data-needs="2" title="Compare Selected Versions (select two with Ctrl+click)">${icon('diff-multiple')}</button>
+    <button class="action" data-file-command="gitRepository.compareFileWithPrevious" data-needs="1" title="Compare with Previous Version">${icon('diff')}</button>
+    <button class="action" data-file-command="gitRepository.compareWithWorkingTree" data-needs="1" data-not-deleted title="Compare with Working Tree">${icon('diff-single')}</button>
+    <button class="action" data-file-command="gitRepository.openFileAtRevision" data-needs="1" data-not-deleted title="Open This Version">${icon('go-to-file')}</button>
+    <button class="action" data-file-command="gitRepository.showCommitDetails" data-needs="1" title="View Commit Details in Git Repository">${icon('git-commit')}</button>
+    <span class="separator"></span>
+    <button class="action toggle" data-ui="details" title="Show Commit Details">${icon('layout-panel')}</button>
+  </div>
+  <div class="actions main-only">
     <button class="action" data-command="gitRepository.refresh" title="Refresh">${icon('refresh')}</button>
     <span class="separator"></span>
     <button class="action" data-command="gitRepository.fetch" title="Fetch">${icon('repo-fetch')}</button>
@@ -121,7 +140,7 @@ app.innerHTML = `
     <button class="action toggle" data-ui="tree" title="Show Branches">${icon('layout-sidebar-left')}</button>
     <button class="action toggle" data-ui="details" title="Show Commit Details">${icon('layout-panel')}</button>
   </div>
-  <div class="search">
+  <div class="search main-only">
     <input type="text" placeholder="Filter History" aria-label="Filter history by message, author or commit ID" spellcheck="false">
     <button class="action clear-search hidden" title="Clear">${icon('close')}</button>
     ${icon('search', 'search-icon')}
@@ -134,10 +153,13 @@ app.innerHTML = `
 <div class="vsash" title="Drag to resize"></div>
 <div class="main">
 <div class="infobar">
-  <span class="label">Branch / Tag:</span>
-  <a class="ref-link" title="Select a branch or tag to view">&nbsp;</a>
-  <span class="upstream"></span>
-  <a class="head-link hidden" title="Show the checked-out branch">${icon('home')} Current branch</a>
+  <span class="label main-only">Branch / Tag:</span>
+  <a class="ref-link main-only" title="Select a branch or tag to view">&nbsp;</a>
+  <span class="upstream main-only"></span>
+  <a class="head-link hidden main-only" title="Show the checked-out branch">${icon('home')} Current branch</a>
+  <span class="label file-only">File:</span>
+  <span class="file-path file-only"></span>
+  <span class="file-hint file-only">Ctrl+click two versions to compare them</span>
 </div>
 <div class="content">
   <div class="grid">
@@ -180,7 +202,11 @@ $('.workspace').insertBefore(refsPane.element, vsash);
 app.querySelector('.toolbar')!.addEventListener('click', e => {
   const button = (e.target as HTMLElement).closest('button');
   if (!button) return;
-  if (button.dataset.command) {
+  if (button.dataset.local === 'refresh') {
+    post({ type: 'refresh' });
+  } else if (button.dataset.fileCommand) {
+    runFileCommand(button.dataset.fileCommand);
+  } else if (button.dataset.command) {
     post({ type: 'command', command: button.dataset.command });
   } else if (button.dataset.option && state) {
     const key = button.dataset.option as keyof HistoryOptions;
@@ -229,7 +255,7 @@ app.querySelector('.banner.operation')!.addEventListener('click', e => {
 // ------------------------------------------------------------------ column sizing & split
 
 function graphWidth(): number {
-  if (data?.isSearch) return 0;
+  if (data?.isSearch || fileMode) return 0;
   return ui.widths.graph ?? autoGraphWidth;
 }
 
@@ -242,9 +268,9 @@ function applyLayout() {
   detailsEl.classList.toggle('hidden', !ui.showDetails);
   sash.classList.toggle('hidden', !ui.showDetails);
   detailsEl.style.height = `${clampDetails(ui.detailsHeight)}px`;
-  app.querySelector('[data-ui="details"]')!.classList.toggle('checked', ui.showDetails);
-  refsPane.element.classList.toggle('hidden', !ui.showTree);
-  vsash.classList.toggle('hidden', !ui.showTree);
+  for (const b of app.querySelectorAll('[data-ui="details"]')) b.classList.toggle('checked', ui.showDetails);
+  refsPane.element.classList.toggle('hidden', !ui.showTree || fileMode);
+  vsash.classList.toggle('hidden', !ui.showTree || fileMode);
   refsPane.element.style.width = `${clampTree(ui.treeWidth)}px`;
   app.querySelector('[data-ui="tree"]')!.classList.toggle('checked', ui.showTree);
   renderRows();
@@ -341,7 +367,12 @@ function buildItems() {
       : [];
   const isHeadRef = state.refLabel === state.headLabel;
 
-  if (data.isSearch) {
+  if (fileMode) {
+    localGraph = [];
+    incomingGraph = [];
+    items.push({ kind: 'section', id: 'file', label: `History (${data.commits.length}${data.hasMore ? '+' : ''})`, actions: [] });
+    if (!ui.collapsed.file) for (const commit of data.commits) items.push({ kind: 'commit', commit, section: 'file' });
+  } else if (data.isSearch) {
     items.push({ kind: 'section', id: 'search', label: `Search Results (${data.commits.length}${data.commits.length >= 1000 ? '+' : ''})`, actions: [] });
     if (!ui.collapsed.search) for (const commit of data.commits) items.push({ kind: 'commit', commit, section: 'search' });
     localGraph = [];
@@ -444,14 +475,13 @@ function renderItem(item: Item, index: number): string {
     : isIn
       ? `<span class="marker" title="Incoming (not yet pulled)">${icon('arrow-down')}</span>`
       : `<span class="marker"></span>`;
-  const context = ctx({
-    webviewSection: 'commit',
-    hash: c.hash,
-    parentHash: c.parents[0] ?? '',
-    isHead: c.hash === state?.headHash,
-    isMerge: c.parents.length > 1,
-  });
-  const sel = c.hash === selected ? ' selected' : '';
+  const isSel = isSelected(c.hash);
+  const context = ctx(
+    fileMode
+      ? fileRowContext(c, isSel)
+      : { webviewSection: 'commit', hash: c.hash, parentHash: c.parents[0] ?? '', isHead: c.hash === state?.headHash, isMerge: c.parents.length > 1 },
+  );
+  const sel = isSel ? ' selected' : '';
   return `<div class="row commit${sel}${isIn && item.section === 'incoming' ? ' incoming' : ''}" style="top:${top}px" data-hash="${c.hash}" data-vscode-context="${context}" role="row" aria-selected="${!!sel}">
     <div class="cell graph">${item.graph && graphWidth() > 0 ? graphSvg(item.graph, c) : ''}</div>
     <div class="cell message">${marker}${c.refs.length ? `<span class="refs">${mergeBadges(c.refs).map(badgeHtml).join('')}</span>` : ''}<span class="subject" title="${esc(c.subject)}">${esc(c.subject)}</span></div>
@@ -473,6 +503,7 @@ function renderRows() {
     const start = Math.max(0, Math.floor(top / ROW) - 8);
     const end = Math.min(items.length, Math.ceil((top + height) / ROW) + 8);
     let html = '';
+    renderedSelection = orderedSelection();
     for (let i = start; i < end; i++) html += renderItem(items[i], i);
     rowsEl.innerHTML = html;
     if (data && data.hasMore && !loadingMore && !data.isSearch && end >= items.length - 20) {
@@ -487,6 +518,12 @@ new ResizeObserver(renderRows).observe(viewport);
 
 function renderState() {
   if (!state) return;
+  if (state.file) {
+    const name = state.file.slice(state.file.lastIndexOf('/') + 1);
+    $('.file-title-name').textContent = name;
+    $('.file-path').textContent = state.file;
+    $('.file-path').title = `${state.repoRoot}/${state.file}`;
+  }
   $('.repo-name').textContent = state.repoName;
   $('.repo-button').title = `${state.repoRoot}\nSwitch Repository`;
   const refLink = $('.ref-link');
@@ -524,7 +561,7 @@ function renderEmpty() {
   const hasCommits = items.some(i => i.kind === 'commit');
   const sectionsCollapsed = items.length > 0;
   emptyEl.classList.toggle('hidden', hasCommits || (sectionsCollapsed && !data?.isSearch && (data?.commits.length ?? 0) > 0));
-  emptyEl.textContent = data?.isSearch ? 'No commits match the filter.' : 'No commits yet.';
+  emptyEl.textContent = fileMode ? 'No commits have changed this file.' : data?.isSearch ? 'No commits match the filter.' : 'No commits yet.';
 }
 
 // ------------------------------------------------------------------ selection & details
@@ -533,15 +570,77 @@ function commitIndex(hash: string): number {
   return items.findIndex(i => i.kind === 'commit' && i.commit.hash === hash);
 }
 
-function select(hash: string | undefined, reveal = false) {
-  if (!hash) return;
-  if (selected !== hash) {
-    selected = hash;
-    details = undefined;
-    detailsLoading = true;
-    post({ type: 'selectCommit', hash });
-    renderDetails();
+function isSelected(hash: string): boolean {
+  return fileMode ? selection.includes(hash) : hash === selected;
+}
+
+/** Selected commits in list order (newest first). */
+function orderedSelection(): CommitRow[] {
+  if (!fileMode || !data) return [];
+  return data.commits.filter(c => selection.includes(c.hash));
+}
+let renderedSelection: CommitRow[] = [];
+
+/** `data-vscode-context` of a file-history row; it carries the whole selection when the row is part of it. */
+function fileRowContext(c: CommitRow, isSel: boolean) {
+  const sel = isSel && renderedSelection.length > 1 ? renderedSelection : [c];
+  return {
+    webviewSection: 'fileCommit',
+    repoRoot: state?.repoRoot ?? '',
+    workingPath: state?.file ?? '',
+    hash: c.hash,
+    parentHash: c.parents[0] ?? '',
+    filePath: c.filePath ?? state?.file ?? '',
+    fileOldPath: c.fileOldPath ?? '',
+    fileStatus: c.fileStatus ?? 'M',
+    multiSelected: sel.length > 1,
+    compareSelection: sel.length === 2,
+    selection: sel.map(s => ({ hash: s.hash, filePath: s.filePath ?? state?.file ?? '' })),
+  };
+}
+
+function runFileCommand(command: string) {
+  const sel = orderedSelection();
+  if (sel.length === 0) return;
+  renderedSelection = sel;
+  post({ type: 'command', command, args: [fileRowContext(sel[0], true)] });
+}
+
+function updateFileToolbar() {
+  if (!fileMode) return;
+  const sel = orderedSelection();
+  for (const b of app.querySelectorAll<HTMLButtonElement>('[data-file-command]')) {
+    b.disabled = sel.length !== Number(b.dataset.needs) || (b.dataset.notDeleted !== undefined && sel[0]?.fileStatus === 'D');
   }
+}
+
+function setDetails(hash: string | undefined) {
+  if (selected === hash) return;
+  selected = hash;
+  details = undefined;
+  detailsLoading = !!hash;
+  if (hash) post({ type: 'selectCommit', hash });
+  renderDetails();
+}
+
+/** `toggle` (Ctrl+click) and `range` (Shift+click) extend the selection in file mode. */
+function select(hash: string | undefined, reveal = false, how: 'replace' | 'toggle' | 'range' = 'replace') {
+  if (!hash) return;
+  if (!fileMode || how === 'replace' || !anchor) {
+    selection = [hash];
+    anchor = hash;
+    setDetails(hash);
+  } else if (how === 'toggle') {
+    selection = selection.includes(hash) ? selection.filter(h => h !== hash) : [...selection, hash];
+    anchor = hash;
+    setDetails(selection.includes(hash) ? hash : selection[selection.length - 1]);
+  } else {
+    const commits = data?.commits ?? [];
+    const [a, b] = [commits.findIndex(c => c.hash === anchor), commits.findIndex(c => c.hash === hash)];
+    selection = a < 0 || b < 0 ? [hash] : commits.slice(Math.min(a, b), Math.max(a, b) + 1).map(c => c.hash);
+    setDetails(hash);
+  }
+  updateFileToolbar();
   if (reveal) {
     const idx = commitIndex(hash);
     if (idx >= 0) {
@@ -564,7 +663,14 @@ rowsEl.addEventListener('mousedown', e => {
   const target = e.target as HTMLElement;
   if (target.closest('.link')) return;
   const row = target.closest<HTMLElement>('.row.commit');
-  if (row) select(row.dataset.hash);
+  if (!row) return;
+  const hash = row.dataset.hash!;
+  const me = e as MouseEvent;
+  // Right-clicking inside a multi-selection keeps it so the context menu can compare it.
+  if (fileMode && me.button === 2 && selection.includes(hash)) return;
+  if (fileMode && me.button === 0 && (me.ctrlKey || me.metaKey)) select(hash, false, 'toggle');
+  else if (fileMode && me.button === 0 && me.shiftKey) select(hash, false, 'range');
+  else select(hash);
 });
 
 rowsEl.addEventListener('click', e => {
@@ -579,6 +685,11 @@ rowsEl.addEventListener('click', e => {
 });
 
 rowsEl.addEventListener('dblclick', e => {
+  const row = (e.target as HTMLElement).closest<HTMLElement>('.row.commit');
+  if (fileMode && row && !(e.ctrlKey || e.metaKey || e.shiftKey)) {
+    runFileCommand('gitRepository.compareFileWithPrevious');
+    return;
+  }
   const badge = (e.target as HTMLElement).closest<HTMLElement>('.badge');
   if (badge?.dataset.ref) {
     const ref = JSON.parse(badge.dataset.ref) as RefBadge;
@@ -601,6 +712,12 @@ viewport.addEventListener('keydown', e => {
     case 'PageUp': next = Math.max(0, pos - page); break;
     case 'Home': next = 0; break;
     case 'End': next = commits.length - 1; break;
+    case 'Enter':
+      if (fileMode) {
+        runFileCommand(orderedSelection().length === 2 ? 'gitRepository.compareFileVersions' : 'gitRepository.compareFileWithPrevious');
+        e.preventDefault();
+      }
+      return;
     case 'c':
       if ((e.ctrlKey || e.metaKey) && selected) {
         post({ type: 'command', command: 'gitRepository.copySha', args: [{ hash: selected }] });
@@ -611,18 +728,30 @@ viewport.addEventListener('keydown', e => {
       return;
   }
   e.preventDefault();
-  if (next >= 0) select((commits[next].it as { commit: CommitRow }).commit.hash, true);
+  if (next >= 0) select((commits[next].it as { commit: CommitRow }).commit.hash, true, fileMode && e.shiftKey ? 'range' : 'replace');
 });
+
+/** Path of the history's file in the commit shown in the details pane. */
+function trackedPath(d: CommitDetails): string | undefined {
+  if (!fileMode) return undefined;
+  return data?.commits.find(c => c.hash === d.hash)?.filePath ?? state?.file;
+}
 
 function fileRow(d: CommitDetails, f: CommitFile): string {
   const slash = f.path.lastIndexOf('/');
   const name = slash >= 0 ? f.path.slice(slash + 1) : f.path;
   const dir = slash >= 0 ? f.path.slice(0, slash) : '';
-  const context = ctx({ webviewSection: 'file', hash: d.hash, parentHash: d.parents[0] ?? '', filePath: f.path, fileOldPath: f.oldPath ?? '', fileStatus: f.status });
+  const context = ctx({ webviewSection: 'file', repoRoot: state?.repoRoot ?? '', ...(f.path === trackedPath(d) ? { workingPath: state?.file ?? '' } : {}), hash: d.hash, parentHash: d.parents[0] ?? '', filePath: f.path, fileOldPath: f.oldPath ?? '', fileStatus: f.status });
   const statusTitle: Record<string, string> = { A: 'Added', M: 'Modified', D: 'Deleted', R: 'Renamed', C: 'Copied', T: 'Type changed', U: 'Unmerged' };
-  return `<div class="file status-${f.status}" data-file="${esc(JSON.stringify(f))}" data-vscode-context="${context}" title="${esc(f.oldPath ? `${f.oldPath} → ${f.path}` : f.path)}" tabindex="0">
+  const tracked = f.path === trackedPath(d) ? ' tracked' : '';
+  return `<div class="file status-${f.status}${tracked}" data-file="${esc(JSON.stringify(f))}" data-vscode-context="${context}" title="${esc(f.oldPath ? `${f.oldPath} → ${f.path}` : f.path)}" tabindex="0">
     ${icon('file')}<span class="file-name">${esc(name)}</span><span class="file-dir">${esc(f.oldPath ? `${f.oldPath} →` : dir)}</span>
     <span class="file-status" title="${statusTitle[f.status] ?? f.status}">${esc(f.status)}</span></div>`;
+}
+
+function sortTrackedFirst(d: CommitDetails): CommitFile[] {
+  const tracked = trackedPath(d);
+  return tracked ? [...d.files].sort((a, b) => Number(b.path === tracked) - Number(a.path === tracked)) : d.files;
 }
 
 function renderDetails() {
@@ -642,10 +771,10 @@ function renderDetails() {
     <div class="details-header">
       <div class="details-subject">${esc(d.subject)}</div>
       <div class="details-actions">
-        <button class="action" data-command="gitRepository.createBranchFrom" title="New Branch from Commit...">${icon('git-branch-create')}</button>
-        <button class="action" data-command="gitRepository.createTag" title="New Tag...">${icon('tag')}</button>
-        <button class="action" data-command="gitRepository.cherryPick" title="Cherry-Pick">${icon('git-commit')}</button>
-        <button class="action" data-command="gitRepository.revert" title="Revert">${icon('discard')}</button>
+        <button class="action main-only" data-command="gitRepository.createBranchFrom" title="New Branch from Commit...">${icon('git-branch-create')}</button>
+        <button class="action main-only" data-command="gitRepository.createTag" title="New Tag...">${icon('tag')}</button>
+        <button class="action main-only" data-command="gitRepository.cherryPick" title="Cherry-Pick">${icon('git-commit')}</button>
+        <button class="action main-only" data-command="gitRepository.revert" title="Revert">${icon('discard')}</button>
         <button class="action" data-command="gitRepository.copySha" title="Copy Commit ID">${icon('copy')}</button>
       </div>
     </div>
@@ -658,7 +787,7 @@ function renderDetails() {
     </div>
     ${d.body ? `<pre class="details-body">${esc(d.body)}</pre>` : ''}
     <div class="files-header">Changes <span class="count-badge">${d.files.length}</span></div>
-    <div class="files">${d.files.map(f => fileRow(d, f)).join('') || '<div class="placeholder">No file changes.</div>'}</div>`;
+    <div class="files">${sortTrackedFirst(d).map(f => fileRow(d, f)).join('') || '<div class="placeholder">No file changes.</div>'}</div>`;
 }
 
 detailsEl.addEventListener('click', e => {
@@ -723,9 +852,12 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
       if (!m.preserveSelection) {
         viewport.scrollTop = 0;
       }
+      // Check the data, not the rendered rows, which are absent while the section is collapsed.
+      if (fileMode) selection = selection.filter(h => m.data.commits.some(c => c.hash === h));
       if (selected && commitIndex(selected) < 0 && !m.preserveSelection) {
         selected = undefined;
         details = undefined;
+        selection = [];
       } else if (selected && m.preserveSelection) {
         // Refs or content of the selected commit (e.g. after amend) may have changed.
         post({ type: 'selectCommit', hash: selected });
@@ -733,6 +865,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
       applyLayout();
       renderDetails();
       renderEmpty();
+      updateFileToolbar();
       break;
     }
     case 'more':
@@ -764,6 +897,8 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
   }
 });
 
+if (fileMode) document.body.classList.add('file-mode');
 applyLayout();
 renderDetails();
+updateFileToolbar();
 post({ type: 'ready' });
