@@ -2,6 +2,8 @@
 
 A Visual Studio–style **Git Repository** window for VS Code: one editor tab with a branches tree on the left (branches, remotes, tags, stashes, worktrees, submodules), the commit graph with incoming/outgoing history in the middle, and commit details below.
 
+![Git Repository window: branches pane, commit graph and commit details](media/screenshot.png)
+
 ## Features
 
 Open it with `Git Repository: Open Git Repository`, `Ctrl+0 Ctrl+R`, or the button in the Source Control title bar.
