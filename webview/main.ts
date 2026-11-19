@@ -10,6 +10,7 @@ import type {
   RefBadge,
   ToWebview,
 } from '../src/shared/protocol';
+import { RefsPane } from './refsPane';
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -35,6 +36,9 @@ interface UiState {
   detailsHeight: number;
   showDetails: boolean;
   collapsed: Partial<Record<SectionId, boolean>>;
+  showTree: boolean;
+  treeWidth: number;
+  treeExpanded: Record<string, boolean>;
 }
 
 const ui: UiState = {
@@ -42,6 +46,9 @@ const ui: UiState = {
   detailsHeight: 280,
   showDetails: true,
   collapsed: {},
+  showTree: true,
+  treeWidth: 260,
+  treeExpanded: {},
   ...(vscode.getState() as Partial<UiState> | undefined),
 };
 const saveUi = () => vscode.setState(ui);
@@ -111,6 +118,7 @@ app.innerHTML = `
     <button class="action toggle" data-option="showTags" title="Show Tags">${icon('tag')}</button>
     <button class="action toggle" data-option="firstParent" title="Show First Parent Only">${icon('list-flat')}</button>
     <span class="separator"></span>
+    <button class="action toggle" data-ui="tree" title="Show Branches">${icon('layout-sidebar-left')}</button>
     <button class="action toggle" data-ui="details" title="Show Commit Details">${icon('layout-panel')}</button>
   </div>
   <div class="search">
@@ -122,6 +130,9 @@ app.innerHTML = `
 <div class="progress"><div class="bar"></div></div>
 <div class="banner error hidden"></div>
 <div class="banner operation hidden"></div>
+<div class="workspace">
+<div class="vsash" title="Drag to resize"></div>
+<div class="main">
 <div class="infobar">
   <span class="label">Branch / Tag:</span>
   <a class="ref-link" title="Select a branch or tag to view">&nbsp;</a>
@@ -145,6 +156,8 @@ app.innerHTML = `
   </div>
   <div class="sash" title="Drag to resize"></div>
   <div class="details" tabindex="-1"></div>
+</div>
+</div>
 </div>`;
 
 const $ = <T extends Element = HTMLElement>(sel: string) => app.querySelector(sel) as unknown as T;
@@ -157,6 +170,10 @@ const detailsEl = $('.details');
 const sash = $('.sash');
 const searchInput = $<HTMLInputElement>('.search input');
 const clearSearch = $('.clear-search');
+const vsash = $('.vsash');
+
+const refsPane = new RefsPane({ post, esc, ctx, icon, expanded: ui.treeExpanded, save: () => saveUi() });
+$('.workspace').insertBefore(refsPane.element, vsash);
 
 // ------------------------------------------------------------------ toolbar
 
@@ -169,6 +186,10 @@ app.querySelector('.toolbar')!.addEventListener('click', e => {
     const key = button.dataset.option as keyof HistoryOptions;
     const value = key === 'mode' ? (state.options.mode === 'all' ? 'current' : 'all') : !state.options[key];
     post({ type: 'setOption', key, value });
+  } else if (button.dataset.ui === 'tree') {
+    ui.showTree = !ui.showTree;
+    saveUi();
+    applyLayout();
   } else if (button.dataset.ui === 'details') {
     ui.showDetails = !ui.showDetails;
     saveUi();
@@ -222,6 +243,10 @@ function applyLayout() {
   sash.classList.toggle('hidden', !ui.showDetails);
   detailsEl.style.height = `${clampDetails(ui.detailsHeight)}px`;
   app.querySelector('[data-ui="details"]')!.classList.toggle('checked', ui.showDetails);
+  refsPane.element.classList.toggle('hidden', !ui.showTree);
+  vsash.classList.toggle('hidden', !ui.showTree);
+  refsPane.element.style.width = `${clampTree(ui.treeWidth)}px`;
+  app.querySelector('[data-ui="tree"]')!.classList.toggle('checked', ui.showTree);
   renderRows();
 }
 
@@ -229,8 +254,13 @@ function clampDetails(height: number): number {
   const total = (app.querySelector('.content') as HTMLElement).clientHeight;
   return total > 0 ? Math.max(80, Math.min(height, Math.round(total * 0.75))) : height;
 }
+function clampTree(width: number): number {
+  const total = app.clientWidth;
+  return total > 0 ? Math.max(140, Math.min(width, Math.round(total * 0.6))) : width;
+}
 window.addEventListener('resize', () => {
   detailsEl.style.height = `${clampDetails(ui.detailsHeight)}px`;
+  refsPane.element.style.width = `${clampTree(ui.treeWidth)}px`;
 });
 
 function drag(onMove: (e: MouseEvent) => void, cursor: string) {
@@ -279,6 +309,16 @@ sash.addEventListener('mousedown', e => {
     detailsEl.style.height = `${ui.detailsHeight}px`;
     renderRows();
   }, 'row-resize');
+});
+
+vsash.addEventListener('mousedown', e => {
+  e.preventDefault();
+  const startX = e.clientX;
+  const start = refsPane.element.offsetWidth;
+  drag(m => {
+    ui.treeWidth = clampTree(start + (m.clientX - startX));
+    refsPane.element.style.width = `${ui.treeWidth}px`;
+  }, 'col-resize');
 });
 
 // ------------------------------------------------------------------ building items
@@ -655,8 +695,23 @@ detailsEl.addEventListener('keydown', e => {
 window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
   const m = event.data;
   switch (m.type) {
+    case 'tree':
+      refsPane.setTree(m.nodes, m.root);
+      break;
+    case 'treeChildren':
+      refsPane.setChildren(m.id, m.nodes);
+      break;
+    case 'focusTreeFilter':
+      if (!ui.showTree) {
+        ui.showTree = true;
+        saveUi();
+        applyLayout();
+      }
+      refsPane.focusFilter();
+      break;
     case 'state':
       state = m.state;
+      refsPane.setActiveRef(m.state.refFull);
       errorText = '';
       renderError();
       renderState();

@@ -53,6 +53,8 @@ export interface HistoryState {
   /** Short name of the ref being displayed (branch, tag, remote branch or short sha). */
   refLabel: string;
   refType: RefType | 'commit';
+  /** Full name of the displayed ref (`refs/heads/main`), or undefined when showing HEAD. */
+  refFull?: string;
   headLabel: string;
   headHash?: string;
   upstream?: string;
@@ -77,7 +79,58 @@ export interface HistoryData {
   isSearch: boolean;
 }
 
+/**
+ * `data-vscode-context` of a node in the branches pane. `treeItem` drives the `webview/context`
+ * menus; the other keys identify the object so commands can resolve it.
+ */
+export interface RefTreeContext {
+  webviewSection: 'tree';
+  treeItem: string;
+  refFull?: string;
+  stashHash?: string;
+  worktreePath?: string;
+  submodulePath?: string;
+  filePath?: string;
+  fileOldPath?: string;
+  fileStatus?: string;
+  untracked?: boolean;
+}
+
+export interface RefTreeAction {
+  command: string;
+  icon: string;
+  title: string;
+}
+
+export interface RefTreeNode {
+  id: string;
+  label: string;
+  description?: string;
+  tooltip?: string;
+  icon?: string;
+  /** Rendered bold (the checked-out branch). */
+  emphasis?: boolean;
+  /** Full ref name, used to highlight the ref whose history is shown. */
+  refFull?: string;
+  context: RefTreeContext;
+  /** `undefined` for leaves. */
+  children?: RefTreeNode[];
+  /** Children are fetched on first expand (stash files). */
+  lazy?: boolean;
+  expanded?: boolean;
+  /** Hover buttons. */
+  actions?: RefTreeAction[];
+  /** Command run on click / Enter, and on double-click. Receives `context`. */
+  command?: string;
+  dblCommand?: string;
+  /** Not matched by the filter box (placeholders such as "No stashes"). */
+  noFilter?: boolean;
+}
+
 export type ToWebview =
+  | { type: 'tree'; nodes: RefTreeNode[]; root: string }
+  | { type: 'treeChildren'; id: string; nodes: RefTreeNode[] }
+  | { type: 'focusTreeFilter' }
   | { type: 'state'; state: HistoryState }
   | { type: 'history'; data: HistoryData; preserveSelection?: boolean }
   | { type: 'more'; commits: CommitRow[]; hasMore: boolean }
@@ -88,6 +141,7 @@ export type ToWebview =
 
 export type FromWebview =
   | { type: 'ready' }
+  | { type: 'treeChildren'; id: string; stashHash: string }
   | { type: 'selectCommit'; hash: string }
   | { type: 'loadMore' }
   | { type: 'setOption'; key: keyof HistoryOptions; value: unknown }

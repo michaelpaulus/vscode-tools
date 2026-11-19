@@ -4,6 +4,9 @@ All notable changes to this extension are documented here. The format follows [K
 
 ## [Unreleased]
 
+### Changed
+- The branches tree now lives inside the Git Repository window as a resizable left pane, like Visual Studio, instead of a separate activity-bar view. It has its own filter box with match highlighting, hover actions, and the same context menus. Double-click a branch to check it out.
+
 ## [0.1.0] - 2026-11-19
 
 ### Added

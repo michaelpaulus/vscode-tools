@@ -6,10 +6,10 @@ import type { GitRepository } from './git/repository';
 import type { RepoManager } from './repoManager';
 import { compareWithWorkingTree, openCommitFileDiff, openFileAtRevision, openStashFileDiff, stashFileRef } from './diff';
 import type { HistoryPanel, HistoryTarget } from './views/historyPanel';
-import type { RefsTreeProvider, TreeNode } from './views/refsTree';
-import type { CommitFile, RefType } from './shared/protocol';
+import type { RefsModel, TreeNode } from './views/refsModel';
+import type { CommitFile, RefTreeContext, RefType } from './shared/protocol';
 
-/** A ref passed to a command from either the tree view or a webview context menu. */
+/** A ref passed to a command from the branches pane or a history context menu. */
 interface RefArg {
   type: Exclude<RefType, 'head'>;
   name: string;
@@ -67,16 +67,25 @@ const isConflictError = (e: unknown) => e instanceof GitError && /CONFLICT|confl
 export class Commands {
   constructor(
     private readonly manager: RepoManager,
-    private readonly tree: RefsTreeProvider,
+    private readonly refs: RefsModel,
     private readonly history: HistoryPanel,
     private readonly output: vscode.LogOutputChannel,
   ) {}
 
   register(): vscode.Disposable[] {
     const c = (id: string, fn: (arg?: Arg, ...rest: unknown[]) => unknown) =>
-      vscode.commands.registerCommand(`gitRepository.${id}`, async (arg?: Arg, ...rest: unknown[]) => {
+      vscode.commands.registerCommand(`gitRepository.${id}`, async (arg?: Arg | RefTreeContext, ...rest: unknown[]) => {
         try {
-          await fn.call(this, arg, ...rest);
+          if (arg && 'webviewSection' in arg && arg.webviewSection === 'tree') {
+            const node = await this.refs.resolve(arg);
+            if (!node) {
+              await this.refs.refresh();
+              void vscode.window.showInformationMessage('That item no longer exists.');
+              return;
+            }
+            arg = node;
+          }
+          await fn.call(this, arg as Arg, ...rest);
         } catch (e) {
           await this.showError(e);
         }
@@ -91,7 +100,6 @@ export class Commands {
       c('push', () => this.push()),
       c('sync', () => this.sync()),
       c('filterTree', () => this.filterTree()),
-      c('clearTreeFilter', () => this.tree.setFilter('')),
       c('showHistory', a => this.showHistory(a)),
       c('checkout', a => this.checkout(a)),
       c('createBranch', a => this.createBranch(a)),
@@ -275,9 +283,8 @@ export class Commands {
   // ---------------------------------------------------------------- general
 
   private async refresh(): Promise<void> {
-    this.tree.refresh();
     await this.manager.refresh();
-    await this.history.reload(true);
+    await Promise.all([this.refs.refresh(), this.history.reload(true)]);
   }
 
   private async switchRepository(): Promise<void> {
@@ -294,13 +301,9 @@ export class Commands {
     if (picked) this.manager.setCurrent(picked.repo.root);
   }
 
-  private async filterTree(): Promise<void> {
-    const text = await vscode.window.showInputBox({
-      prompt: 'Filter branches, tags, worktrees and submodules',
-      value: this.tree.filter,
-      placeHolder: 'e.g. feature/',
-    });
-    if (text !== undefined) this.tree.setFilter(text);
+  private filterTree(): void {
+    this.history.show(undefined, false);
+    this.history.post({ type: 'focusTreeFilter' });
   }
 
   private async showHistory(arg: Arg): Promise<void> {

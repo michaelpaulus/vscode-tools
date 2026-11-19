@@ -13,6 +13,7 @@ import type {
   ToWebview,
 } from '../shared/protocol';
 import { openCommitFileDiff } from '../diff';
+import type { RefsModel } from './refsModel';
 
 export interface HistoryTarget {
   type: Exclude<RefType, 'head'> | 'commit';
@@ -42,6 +43,7 @@ export class HistoryPanel implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly manager: RepoManager,
+    private readonly refs: RefsModel,
   ) {
     this.options = { ...DEFAULT_OPTIONS, ...context.workspaceState.get<Partial<HistoryOptions>>(OPTIONS_KEY) };
     this.disposables.push(
@@ -50,6 +52,7 @@ export class HistoryPanel implements vscode.Disposable {
         this.filter = '';
         void this.reload();
       }),
+      refs.onDidChange(() => this.postTree()),
       manager.onDidChangeRepository(repo => {
         if (repo === manager.current) void this.reload(true);
       }),
@@ -76,7 +79,8 @@ export class HistoryPanel implements vscode.Disposable {
     return this.selected;
   }
 
-  show(target?: HistoryTarget | null): void {
+  /** Opens or reveals the panel. `target` undefined keeps the displayed ref; `reload` false skips reloading an open panel. */
+  show(target?: HistoryTarget | null, reload = true): void {
     if (target !== undefined) {
       this.target = target ?? undefined;
       this.targetRepo = this.manager.current?.root;
@@ -84,7 +88,7 @@ export class HistoryPanel implements vscode.Disposable {
     }
     if (this.panel) {
       this.panel.reveal(undefined, false);
-      void this.reload();
+      if (reload) void this.reload();
       return;
     }
     const panel = vscode.window.createWebviewPanel(HistoryPanel.viewType, 'Git Repository', vscode.ViewColumn.Active, {
@@ -117,7 +121,7 @@ export class HistoryPanel implements vscode.Disposable {
     ];
   }
 
-  private post(message: ToWebview): void {
+  post(message: ToWebview): void {
     void this.panel?.webview.postMessage(message);
   }
 
@@ -125,6 +129,7 @@ export class HistoryPanel implements vscode.Disposable {
     switch (message.type) {
       case 'ready':
         this.readyCount++;
+        void this.refs.ensure().then(() => this.postTree());
         await this.reload();
         break;
       case 'selectCommit':
@@ -148,10 +153,18 @@ export class HistoryPanel implements vscode.Disposable {
           await vscode.commands.executeCommand(message.command, ...(message.args ?? []));
         }
         break;
+      case 'treeChildren':
+        this.post({ type: 'treeChildren', id: message.id, nodes: await this.refs.stashFileNodes(message.stashHash) });
+        break;
       case 'openFile':
         await this.openFile(message.hash, message.file);
         break;
     }
+  }
+
+  private postTree(): void {
+    const snapshot = this.refs.snapshot;
+    this.post({ type: 'tree', nodes: this.refs.tree(snapshot), root: snapshot?.root ?? '' });
   }
 
   private async openFile(hash: string, file: CommitFile): Promise<void> {
@@ -236,6 +249,7 @@ export class HistoryPanel implements vscode.Disposable {
       repoRoot: repo.root,
       refLabel,
       refType,
+      refFull: target ? target.fullName : head.branch ? `refs/heads/${head.branch}` : undefined,
       headLabel: head.branch ?? (head.commit ? head.commit.slice(0, 8) : 'HEAD'),
       headHash: head.commit,
       upstream,

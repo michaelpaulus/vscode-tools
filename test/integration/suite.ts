@@ -4,8 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ExtensionApi } from '../../src/extension';
-import type { GitRef } from '../../src/git/parsers';
-import type { TreeNode } from '../../src/views/refsTree';
+import type { RefTreeContext, RefTreeNode } from '../../src/shared/protocol';
 
 const work = process.env.GITREPO_TEST_WORK!;
 const tmpRoot = process.env.GITREPO_TEST_ROOT!;
@@ -73,11 +72,30 @@ async function exec(command: string, ...args: unknown[]): Promise<void> {
 
 let api: ExtensionApi;
 
-async function refNode(fullName: string): Promise<TreeNode> {
-  const ref = (await api.manager.current!.getRefs()).find(r => r.fullName === fullName);
-  assert.ok(ref, `ref ${fullName} not found`);
-  return { kind: 'ref', ref: ref as GitRef };
+/** Freshly loaded branches-pane nodes. */
+async function treeNodes(): Promise<RefTreeNode[]> {
+  await api.refs.refresh();
+  return api.refs.tree();
 }
+
+function findNode(nodes: RefTreeNode[], pred: (n: RefTreeNode) => boolean): RefTreeNode | undefined {
+  for (const n of nodes) {
+    if (pred(n)) return n;
+    const child = n.children && findNode(n.children, pred);
+    if (child) return child;
+  }
+  return undefined;
+}
+
+/** The context-menu argument VS Code passes for a node in the branches pane. */
+async function paneContext(pred: (n: RefTreeNode) => boolean, what: string): Promise<RefTreeContext> {
+  const node = findNode(await treeNodes(), pred);
+  assert.ok(node, `${what} not found in the branches pane`);
+  return { ...node.context, preventDefaultContextMenuItems: true } as RefTreeContext;
+}
+
+const refNode = (fullName: string) => paneContext(n => n.refFull === fullName, `ref ${fullName}`);
+const stashNode = () => paneContext(n => n.context.treeItem === 'stash', 'stash');
 
 const head = () => git('rev-parse', 'HEAD');
 const branch = () => git('rev-parse', '--abbrev-ref', 'HEAD');
@@ -90,28 +108,26 @@ const tests: [string, () => Promise<void>][] = [
     assert.equal(root.toLowerCase(), work.toLowerCase());
   }],
 
-  ['shows grouped refs in the tree', async () => {
-    const groups = await api.tree.getChildren();
-    const labels = groups.map(g => (api.tree.getTreeItem(g).label as string));
-    assert.deepEqual(labels, ['Branches', 'Remotes', 'Tags', 'Stashes', 'Worktrees', 'Submodules']);
-    const branches = await api.tree.getChildren(groups[0]);
-    const items = branches.map(b => api.tree.getTreeItem(b));
-    assert.equal((items[0].label as vscode.TreeItemLabel).label, 'main');
-    assert.equal(items[0].contextValue, 'ref:branch:current:upstream');
-    assert.equal(items[1].label, 'feature');
-    const feature = await api.tree.getChildren(branches[1]);
-    assert.equal((api.tree.getTreeItem(feature[0]).label as vscode.TreeItemLabel).label, 'one');
-    const remotes = await api.tree.getChildren(groups[1]);
-    assert.equal(api.tree.getTreeItem(remotes[0]).label, 'origin');
-    const tags = await api.tree.getChildren(groups[2]);
-    assert.equal((api.tree.getTreeItem(tags[0]).label as vscode.TreeItemLabel).label, 'v1.0');
+  ['shows grouped refs in the branches pane', async () => {
+    const groups = await treeNodes();
+    assert.deepEqual(groups.map(g => g.label), ['Branches', 'Remotes', 'Tags', 'Stashes', 'Worktrees', 'Submodules']);
+    const branches = groups[0].children!;
+    assert.equal(branches[0].label, 'main');
+    assert.equal(branches[0].emphasis, true);
+    assert.equal(branches[0].context.treeItem, 'ref:branch:current:upstream');
+    assert.equal(branches[1].label, 'feature');
+    assert.equal(branches[1].children![0].label, 'one');
+    assert.equal(groups[1].children![0].label, 'origin');
+    assert.equal(groups[2].children![0].label, 'v1.0');
+    assert.equal(groups[3].children![0].label, 'No stashes');
   }],
 
-  ['filters the tree', async () => {
-    api.tree.setFilter('one');
-    const groups = await api.tree.getChildren();
-    assert.deepEqual(groups.map(g => (g as { group: string }).group), ['branches', 'remotes']);
-    api.tree.setFilter('');
+  ['resolves pane contexts to the objects they represent', async () => {
+    const node = await api.refs.resolve(await refNode('refs/heads/feature/one'));
+    assert.equal(node?.kind === 'ref' && node.ref.name, 'feature/one');
+    const group = await api.refs.resolve(await paneContext(n => n.context.treeItem === 'group:tags', 'tags group'));
+    assert.deepEqual(group, { kind: 'group', group: 'tags' });
+    assert.equal(await api.refs.resolve({ webviewSection: 'tree', treeItem: 'ref:tag', refFull: 'refs/tags/missing' }), undefined);
   }],
 
   ['opens the history window', async () => {
@@ -211,7 +227,7 @@ const tests: [string, () => Promise<void>][] = [
     let worktrees = await api.manager.current!.getWorktrees();
     assert.equal(worktrees.length, 2);
     assert.equal(worktrees[1].branch, 'feature/one');
-    await exec('removeWorktree', { kind: 'worktree', worktree: worktrees[1] });
+    await exec('removeWorktree', await paneContext(n => n.context.worktreePath === worktrees[1].path, 'worktree'));
     worktrees = await api.manager.current!.getWorktrees();
     assert.equal(worktrees.length, 1);
   }],
@@ -228,17 +244,17 @@ const tests: [string, () => Promise<void>][] = [
     inputs.push('My stash');
     await exec('stashAll');
     assert.equal(git('status', '--porcelain'), '');
-    const stash = await stashNode();
-    const item = api.tree.getTreeItem(stash);
-    assert.equal(item.label, 'My stash');
-    assert.match(String(item.description), /^stash@\{0\} · on main/);
-    const files = (await api.tree.getChildren(stash)) as Extract<TreeNode, { kind: 'stashFile' }>[];
-    assert.deepEqual(files.map(f => [f.file.path, f.file.status, !!f.file.untracked]), [['a.txt', 'M', false], ['new.txt', 'A', true]]);
+    const stash = findNode(await treeNodes(), n => n.context.treeItem === 'stash')!;
+    assert.equal(stash.label, 'My stash');
+    assert.match(String(stash.description), /^stash@\{0\} · on main/);
+    assert.ok(stash.lazy);
+    const files = await api.refs.stashFileNodes(stash.context.stashHash!);
+    assert.deepEqual(files.map(f => [f.context.filePath, f.context.fileStatus, f.context.untracked]), [['a.txt', 'M', false], ['new.txt', 'A', true]]);
   }],
 
   ['opens the diff for a stashed untracked file', async () => {
-    const files = (await api.tree.getChildren(await stashNode())) as Extract<TreeNode, { kind: 'stashFile' }>[];
-    await exec('openStashFileDiff', files.find(f => f.file.untracked));
+    const files = await api.refs.stashFileNodes((await stashNode()).stashHash!);
+    await exec('openStashFileDiff', files.find(f => f.context.untracked)!.context);
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
     assert.ok(tab?.input instanceof vscode.TabInputTextDiff, 'expected a diff editor');
     assert.equal(tab.label, 'new.txt (stash@{0}) [untracked]');
@@ -285,13 +301,6 @@ const tests: [string, () => Promise<void>][] = [
     assert.equal(git('stash', 'list'), '');
   }],
 ];
-
-async function stashNode(): Promise<TreeNode> {
-  const groups = await api.tree.getChildren();
-  const stashes = await api.tree.getChildren(groups.find(g => g.kind === 'group' && g.group === 'stashes'));
-  assert.equal(stashes[0]?.kind, 'stash', 'expected a stash in the tree');
-  return stashes[0];
-}
 
 export async function run(): Promise<void> {
   const ext = vscode.extensions.getExtension<ExtensionApi>('michaelpaulus.git-repository-window');

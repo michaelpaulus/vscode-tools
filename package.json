@@ -105,15 +105,9 @@
       },
       {
         "command": "gitRepository.filterTree",
-        "title": "Filter Branches and Tags...",
+        "title": "Filter Branches",
         "category": "Git Repository",
         "icon": "$(filter)"
-      },
-      {
-        "command": "gitRepository.clearTreeFilter",
-        "title": "Clear Filter",
-        "category": "Git Repository",
-        "icon": "$(clear-all)"
       },
       {
         "command": "gitRepository.showHistory",
@@ -452,31 +446,6 @@
         "icon": "$(close)"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "gitRepository",
-          "title": "Git Repository",
-          "icon": "media/git-repository.svg"
-        }
-      ]
-    },
-    "views": {
-      "gitRepository": [
-        {
-          "id": "gitRepository.refs",
-          "name": "Branches / Tags",
-          "icon": "media/git-repository.svg",
-          "contextualTitle": "Git Repository"
-        }
-      ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "gitRepository.refs",
-        "contents": "No Git repository found in this workspace."
-      }
-    ],
     "menus": {
       "commandPalette": [
         {
@@ -616,10 +585,6 @@
           "when": "false"
         },
         {
-          "command": "gitRepository.clearTreeFilter",
-          "when": "false"
-        },
-        {
           "command": "gitRepository.merge",
           "when": "false"
         },
@@ -662,350 +627,6 @@
         {
           "command": "gitRepository.clearStashes",
           "when": "gitRepository.hasStashes"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "gitRepository.open",
-          "when": "view == gitRepository.refs",
-          "group": "navigation@0"
-        },
-        {
-          "command": "gitRepository.fetch",
-          "when": "view == gitRepository.refs",
-          "group": "navigation@1"
-        },
-        {
-          "command": "gitRepository.pull",
-          "when": "view == gitRepository.refs",
-          "group": "navigation@2"
-        },
-        {
-          "command": "gitRepository.push",
-          "when": "view == gitRepository.refs",
-          "group": "navigation@3"
-        },
-        {
-          "command": "gitRepository.filterTree",
-          "when": "view == gitRepository.refs && !gitRepository.treeFiltered",
-          "group": "navigation@4"
-        },
-        {
-          "command": "gitRepository.clearTreeFilter",
-          "when": "view == gitRepository.refs && gitRepository.treeFiltered",
-          "group": "navigation@4"
-        },
-        {
-          "command": "gitRepository.refresh",
-          "when": "view == gitRepository.refs",
-          "group": "navigation@5"
-        },
-        {
-          "command": "gitRepository.switchRepository",
-          "when": "view == gitRepository.refs",
-          "group": "1_repo@1"
-        },
-        {
-          "command": "gitRepository.createBranch",
-          "when": "view == gitRepository.refs",
-          "group": "2_branch@1"
-        },
-        {
-          "command": "gitRepository.sync",
-          "when": "view == gitRepository.refs",
-          "group": "3_remote@1"
-        },
-        {
-          "command": "gitRepository.fetchPrune",
-          "when": "view == gitRepository.refs",
-          "group": "3_remote@2"
-        },
-        {
-          "command": "gitRepository.stashAll",
-          "when": "view == gitRepository.refs",
-          "group": "2_branch@2"
-        },
-        {
-          "command": "gitRepository.stashKeepStaged",
-          "when": "view == gitRepository.refs",
-          "group": "2_branch@3"
-        },
-        {
-          "command": "gitRepository.stashStaged",
-          "when": "view == gitRepository.refs",
-          "group": "2_branch@4"
-        },
-        {
-          "command": "gitRepository.continueOperation",
-          "when": "view == gitRepository.refs && gitRepository.operationInProgress",
-          "group": "4_op@1"
-        },
-        {
-          "command": "gitRepository.abortOperation",
-          "when": "view == gitRepository.refs && gitRepository.operationInProgress",
-          "group": "4_op@2"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "gitRepository.checkout",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:(branch:other|remote|tag)/",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.pushBranch",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:branch:current/",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.createBranch",
-          "when": "view == gitRepository.refs && viewItem == group:branches",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.addWorktree",
-          "when": "view == gitRepository.refs && viewItem == group:worktrees",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.addSubmodule",
-          "when": "view == gitRepository.refs && viewItem == group:submodules",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.openWorktree",
-          "when": "view == gitRepository.refs && viewItem =~ /^worktree:linked/",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.openSubmodule",
-          "when": "view == gitRepository.refs && viewItem =~ /^submodule:initialized/",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.checkout",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:(branch:other|remote|tag)/",
-          "group": "1_checkout@1"
-        },
-        {
-          "command": "gitRepository.createBranchFrom",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:/",
-          "group": "1_checkout@2"
-        },
-        {
-          "command": "gitRepository.addWorktree",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:(branch:other|remote|tag)/",
-          "group": "1_checkout@3"
-        },
-        {
-          "command": "gitRepository.merge",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:(branch:other|remote|tag)/",
-          "group": "2_integrate@1"
-        },
-        {
-          "command": "gitRepository.rebase",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:(branch:other|remote|tag)/",
-          "group": "2_integrate@2"
-        },
-        {
-          "command": "gitRepository.showHistory",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:/",
-          "group": "3_view@1"
-        },
-        {
-          "command": "gitRepository.pushBranch",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:branch/",
-          "group": "4_remote@1"
-        },
-        {
-          "command": "gitRepository.pull",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:branch:current/",
-          "group": "4_remote@2"
-        },
-        {
-          "command": "gitRepository.setUpstream",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:branch/",
-          "group": "4_remote@3"
-        },
-        {
-          "command": "gitRepository.unsetUpstream",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:branch:\\w+:upstream/",
-          "group": "4_remote@4"
-        },
-        {
-          "command": "gitRepository.pushTag",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:tag/",
-          "group": "4_remote@5"
-        },
-        {
-          "command": "gitRepository.renameBranch",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:branch/",
-          "group": "5_edit@1"
-        },
-        {
-          "command": "gitRepository.deleteBranch",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:branch:other/",
-          "group": "5_edit@2"
-        },
-        {
-          "command": "gitRepository.deleteRemoteBranch",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:remote/",
-          "group": "5_edit@3"
-        },
-        {
-          "command": "gitRepository.deleteTag",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:tag/",
-          "group": "5_edit@4"
-        },
-        {
-          "command": "gitRepository.deleteRemoteTag",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:tag/",
-          "group": "5_edit@5"
-        },
-        {
-          "command": "gitRepository.copyRefName",
-          "when": "view == gitRepository.refs && viewItem =~ /^ref:/",
-          "group": "9_copy@1"
-        },
-        {
-          "command": "gitRepository.openWorktree",
-          "when": "view == gitRepository.refs && viewItem =~ /^worktree:linked/",
-          "group": "1_open@1"
-        },
-        {
-          "command": "gitRepository.openWorktreeHere",
-          "when": "view == gitRepository.refs && viewItem =~ /^worktree:linked/",
-          "group": "1_open@2"
-        },
-        {
-          "command": "gitRepository.lockWorktree",
-          "when": "view == gitRepository.refs && viewItem =~ /^worktree:linked:unlocked/",
-          "group": "2_manage@1"
-        },
-        {
-          "command": "gitRepository.unlockWorktree",
-          "when": "view == gitRepository.refs && viewItem =~ /^worktree:linked:locked/",
-          "group": "2_manage@1"
-        },
-        {
-          "command": "gitRepository.removeWorktree",
-          "when": "view == gitRepository.refs && viewItem =~ /^worktree:linked/",
-          "group": "2_manage@2"
-        },
-        {
-          "command": "gitRepository.addWorktree",
-          "when": "view == gitRepository.refs && viewItem == group:worktrees",
-          "group": "1_add@1"
-        },
-        {
-          "command": "gitRepository.pruneWorktrees",
-          "when": "view == gitRepository.refs && viewItem == group:worktrees",
-          "group": "1_add@2"
-        },
-        {
-          "command": "gitRepository.openSubmodule",
-          "when": "view == gitRepository.refs && viewItem =~ /^submodule:initialized/",
-          "group": "1_open@1"
-        },
-        {
-          "command": "gitRepository.updateSubmodule",
-          "when": "view == gitRepository.refs && viewItem =~ /^submodule/",
-          "group": "2_manage@1"
-        },
-        {
-          "command": "gitRepository.syncSubmodule",
-          "when": "view == gitRepository.refs && viewItem =~ /^submodule/",
-          "group": "2_manage@2"
-        },
-        {
-          "command": "gitRepository.deinitSubmodule",
-          "when": "view == gitRepository.refs && viewItem =~ /^submodule:initialized/",
-          "group": "2_manage@3"
-        },
-        {
-          "command": "gitRepository.addSubmodule",
-          "when": "view == gitRepository.refs && viewItem == group:submodules",
-          "group": "1_add@1"
-        },
-        {
-          "command": "gitRepository.updateAllSubmodules",
-          "when": "view == gitRepository.refs && viewItem == group:submodules",
-          "group": "1_add@2"
-        },
-        {
-          "command": "gitRepository.stashAll",
-          "when": "view == gitRepository.refs && viewItem == group:stashes",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.stashAll",
-          "when": "view == gitRepository.refs && viewItem == group:stashes",
-          "group": "1_stash@1"
-        },
-        {
-          "command": "gitRepository.stashKeepStaged",
-          "when": "view == gitRepository.refs && viewItem == group:stashes",
-          "group": "1_stash@2"
-        },
-        {
-          "command": "gitRepository.stashStaged",
-          "when": "view == gitRepository.refs && viewItem == group:stashes",
-          "group": "1_stash@3"
-        },
-        {
-          "command": "gitRepository.clearStashes",
-          "when": "view == gitRepository.refs && viewItem == group:stashes && gitRepository.hasStashes",
-          "group": "2_manage@1"
-        },
-        {
-          "command": "gitRepository.applyStash",
-          "when": "view == gitRepository.refs && viewItem == stash",
-          "group": "inline@1"
-        },
-        {
-          "command": "gitRepository.popStash",
-          "when": "view == gitRepository.refs && viewItem == stash",
-          "group": "inline@2"
-        },
-        {
-          "command": "gitRepository.applyStash",
-          "when": "view == gitRepository.refs && viewItem == stash",
-          "group": "1_apply@1"
-        },
-        {
-          "command": "gitRepository.popStash",
-          "when": "view == gitRepository.refs && viewItem == stash",
-          "group": "1_apply@2"
-        },
-        {
-          "command": "gitRepository.createBranchFromStash",
-          "when": "view == gitRepository.refs && viewItem == stash",
-          "group": "2_branch@1"
-        },
-        {
-          "command": "gitRepository.dropStash",
-          "when": "view == gitRepository.refs && viewItem == stash",
-          "group": "3_delete@1"
-        },
-        {
-          "command": "gitRepository.openStashFileDiff",
-          "when": "view == gitRepository.refs && viewItem =~ /^stashFile/",
-          "group": "1_open@1"
-        },
-        {
-          "command": "gitRepository.compareStashFileWithWorkingTree",
-          "when": "view == gitRepository.refs && viewItem == stashFile:present",
-          "group": "1_open@2"
-        },
-        {
-          "command": "gitRepository.openStashWorkingFile",
-          "when": "view == gitRepository.refs && viewItem =~ /^stashFile/",
-          "group": "1_open@3"
-        },
-        {
-          "command": "gitRepository.openStashWorkingFile",
-          "when": "view == gitRepository.refs && viewItem =~ /^stashFile/",
-          "group": "inline@1"
         }
       ],
       "webview/context": [
@@ -1153,6 +774,226 @@
           "command": "gitRepository.copyFilePath",
           "when": "webviewId == 'gitRepository.history' && webviewSection == 'file'",
           "group": "9_copy@1"
+        },
+        {
+          "command": "gitRepository.checkout",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:(branch:other|remote|tag)/",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "gitRepository.createBranchFrom",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:/",
+          "group": "1_checkout@2"
+        },
+        {
+          "command": "gitRepository.addWorktree",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:(branch:other|remote|tag)/",
+          "group": "1_checkout@3"
+        },
+        {
+          "command": "gitRepository.merge",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:(branch:other|remote|tag)/",
+          "group": "2_integrate@1"
+        },
+        {
+          "command": "gitRepository.rebase",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:(branch:other|remote|tag)/",
+          "group": "2_integrate@2"
+        },
+        {
+          "command": "gitRepository.showHistory",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:/",
+          "group": "3_view@1"
+        },
+        {
+          "command": "gitRepository.pushBranch",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:branch/",
+          "group": "4_remote@1"
+        },
+        {
+          "command": "gitRepository.pull",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:branch:current/",
+          "group": "4_remote@2"
+        },
+        {
+          "command": "gitRepository.setUpstream",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:branch/",
+          "group": "4_remote@3"
+        },
+        {
+          "command": "gitRepository.unsetUpstream",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:branch:\\w+:upstream/",
+          "group": "4_remote@4"
+        },
+        {
+          "command": "gitRepository.pushTag",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:tag/",
+          "group": "4_remote@5"
+        },
+        {
+          "command": "gitRepository.renameBranch",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:branch/",
+          "group": "5_edit@1"
+        },
+        {
+          "command": "gitRepository.deleteBranch",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:branch:other/",
+          "group": "5_edit@2"
+        },
+        {
+          "command": "gitRepository.deleteRemoteBranch",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:remote/",
+          "group": "5_edit@3"
+        },
+        {
+          "command": "gitRepository.deleteTag",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:tag/",
+          "group": "5_edit@4"
+        },
+        {
+          "command": "gitRepository.deleteRemoteTag",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:tag/",
+          "group": "5_edit@5"
+        },
+        {
+          "command": "gitRepository.copyRefName",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^ref:/",
+          "group": "9_copy@1"
+        },
+        {
+          "command": "gitRepository.openWorktree",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^worktree:linked/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "gitRepository.openWorktreeHere",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^worktree:linked/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "gitRepository.lockWorktree",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^worktree:linked:unlocked/",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "gitRepository.unlockWorktree",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^worktree:linked:locked/",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "gitRepository.removeWorktree",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^worktree:linked/",
+          "group": "2_manage@2"
+        },
+        {
+          "command": "gitRepository.addWorktree",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:worktrees'",
+          "group": "1_add@1"
+        },
+        {
+          "command": "gitRepository.pruneWorktrees",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:worktrees'",
+          "group": "1_add@2"
+        },
+        {
+          "command": "gitRepository.openSubmodule",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^submodule:initialized/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "gitRepository.updateSubmodule",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^submodule/",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "gitRepository.syncSubmodule",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^submodule/",
+          "group": "2_manage@2"
+        },
+        {
+          "command": "gitRepository.deinitSubmodule",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^submodule:initialized/",
+          "group": "2_manage@3"
+        },
+        {
+          "command": "gitRepository.addSubmodule",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:submodules'",
+          "group": "1_add@1"
+        },
+        {
+          "command": "gitRepository.updateAllSubmodules",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:submodules'",
+          "group": "1_add@2"
+        },
+        {
+          "command": "gitRepository.stashAll",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:stashes'",
+          "group": "1_stash@1"
+        },
+        {
+          "command": "gitRepository.stashKeepStaged",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:stashes'",
+          "group": "1_stash@2"
+        },
+        {
+          "command": "gitRepository.stashStaged",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:stashes'",
+          "group": "1_stash@3"
+        },
+        {
+          "command": "gitRepository.clearStashes",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:stashes' && gitRepository.hasStashes",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "gitRepository.applyStash",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'stash'",
+          "group": "1_apply@1"
+        },
+        {
+          "command": "gitRepository.popStash",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'stash'",
+          "group": "1_apply@2"
+        },
+        {
+          "command": "gitRepository.createBranchFromStash",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'stash'",
+          "group": "2_branch@1"
+        },
+        {
+          "command": "gitRepository.dropStash",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'stash'",
+          "group": "3_delete@1"
+        },
+        {
+          "command": "gitRepository.openStashFileDiff",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^stashFile/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "gitRepository.compareStashFileWithWorkingTree",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'stashFile:present'",
+          "group": "1_open@2"
+        },
+        {
+          "command": "gitRepository.openStashWorkingFile",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^stashFile/",
+          "group": "1_open@3"
+        },
+        {
+          "command": "gitRepository.createBranch",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem == 'group:branches'",
+          "group": "1_add@1"
+        },
+        {
+          "command": "gitRepository.fetch",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^(group:remotes|remote)$/",
+          "group": "1_fetch@1"
+        },
+        {
+          "command": "gitRepository.fetchPrune",
+          "when": "webviewId == 'gitRepository.history' && webviewSection == 'tree' && treeItem =~ /^(group:remotes|remote)$/",
+          "group": "1_fetch@2"
         }
       ],
       "scm/title": [

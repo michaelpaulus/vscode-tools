@@ -1,17 +1,20 @@
 # Git Repository Window for VS Code
 
-A Visual Studio–style **Git Repository** window for VS Code, built with native VS Code UI: a tree view for branches, tags, stashes, worktrees and submodules, and an editor tab with the commit graph, incoming/outgoing history and commit details.
+A Visual Studio–style **Git Repository** window for VS Code: one editor tab with a branches tree on the left (branches, remotes, tags, stashes, worktrees, submodules), the commit graph with incoming/outgoing history in the middle, and commit details below.
 
 ## Features
 
-**Branches / Tags view** (activity bar → *Git Repository*)
-- Local branches grouped into folders by `/`, the current branch on top, ahead/behind counts, and branches checked out in other worktrees
-- Remotes with their branches, tags (newest first), stashes, linked worktrees, submodules
-- Expand a stash to see its files (untracked files included); click one to diff it in VS Code's built-in diff editor
-- Filter (`Filter Branches and Tags...`), switch repository, fetch / pull / push / sync from the title bar
-- Click a ref to show its history; right-click for every operation
+Open it with `Git Repository: Open Git Repository`, `Ctrl+0 Ctrl+R`, or the button in the Source Control title bar.
 
-**History window** (`Git Repository: Open Git Repository`, `Ctrl+0 Ctrl+R`, or the button in Source Control)
+**Branches pane** (left side of the window; resize with the splitter, hide with the toolbar toggle)
+- Local branches grouped into folders by `/`, the current branch on top in bold, ahead/behind counts, and branches checked out in other worktrees
+- Remotes with their branches, tags (newest first), stashes, linked worktrees, submodules
+- Click a ref to show its history (the displayed ref is highlighted); double-click a branch to check it out; hover for quick actions; right-click for every operation
+- Expand a stash to see its files (untracked files included); click one to diff it in VS Code's built-in diff editor
+- Filter box (or just start typing in the tree) narrows every group and highlights matches; `Filter Branches` focuses it from the Command Palette
+- Keyboard: arrows to move / expand / collapse, Enter to open, Space to toggle
+
+**History**
 - Commit graph with lane colours from the theme's SCM graph palette
 - *Incoming* (upstream commits not yet pulled) and *Local History* (with outgoing count) sections, like Visual Studio
 - Toggles: all branches, remote branches, tags, first-parent only, details pane
@@ -79,6 +82,6 @@ Publishing uses Marketplace **Trusted Publishing** (GitHub OIDC), so no token is
 
 - `src/git/` – git CLI wrapper, output parsers and `GitRepository` (no `vscode` dependency, unit-tested)
 - `src/shared/` – graph lane algorithm and the extension ↔ webview message protocol
-- `src/views/` – Branches/Tags tree provider and the history webview panel
+- `src/views/` – branches model (loads refs and shapes the tree) and the Git Repository webview panel
 - `src/commands.ts` – every command, using native quick picks, input boxes and confirmations
-- `webview/` – history UI (virtualised grid, SVG graph, details pane), styled with VS Code theme variables and codicons
+- `webview/` – window UI (branches pane, virtualised history grid, SVG graph, details pane), styled with VS Code theme variables and codicons
