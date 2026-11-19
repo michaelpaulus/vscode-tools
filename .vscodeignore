@@ -1,0 +1,14 @@
+src/**
+webview/**
+test/**
+node_modules/**
+.vscode/**
+tsconfig.json
+esbuild.mjs
+vitest.config.*
+**/*.map
+
+dist-test/**
+.vscode-test/**
+.gitignore
+.github/**

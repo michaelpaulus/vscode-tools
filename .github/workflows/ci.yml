@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - name: Cache VS Code test install
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: vscode-test-${{ runner.os }}-
+
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Electron's sandbox needs.
+      - name: Allow Electron sandbox
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Integration tests
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:integration
+
+      - name: Integration tests
+        if: runner.os != 'Linux'
+        run: npm run test:integration
+
+  package:
+    name: Package VSIX
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx vsce package --out extension.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: extension.vsix
+          if-no-files-found: error
