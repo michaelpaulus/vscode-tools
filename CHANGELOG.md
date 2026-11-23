@@ -4,6 +4,8 @@ All notable changes to this extension are documented here. The format follows [K
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
 ### Added
 - File history: **View History** on a file (Explorer, editor, editor tab, Source Control, or a commit's changed files) opens a *History - file* tab that follows renames. Ctrl+click two versions to compare them, or compare a version with the previous one or the working tree.
 - The window stays usable while git works: running operations show in the toolbar (hover for the full list) with the progress bar, and spinners on the affected branch, stash, worktree, commit row and toolbar button.

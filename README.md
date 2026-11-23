@@ -74,7 +74,7 @@ Press `F5` to launch an Extension Development Host. To install locally:
 
 ```powershell
 npm run package
-code --install-extension git-repository-window-0.1.0.vsix
+code --install-extension git-repository-window-0.2.0.vsix
 ```
 
 ### Releasing
